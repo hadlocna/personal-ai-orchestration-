@@ -6,6 +6,7 @@
     "start": "node src/index.js"
   },
   "dependencies": {
-    "@repo/common": "file:../../packages/common"
+    "@repo/common": "file:../../packages/common",
+    "pg": "^8.12.0"
   }
 }

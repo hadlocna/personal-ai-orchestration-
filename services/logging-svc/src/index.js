@@ -8,16 +8,26 @@ const {
   requireAuth
 } = require('@repo/common');
 
+const {
+  pool,
+  initDb,
+  insertLog,
+  queryLogs
+} = require('./db');
+const { registerStream, broadcastLog } = require('./stream');
+
 const SERVICE_NAME = 'logging-svc';
 const PORT = process.env.PORT || 4001;
 
-function bootstrap() {
+async function createService() {
   try {
     ensureConfig();
   } catch (err) {
     console.error(`${SERVICE_NAME}: configuration validation failed`, err.cause || err);
     process.exit(1);
   }
+
+  await initDb();
 
   const app = express();
 
@@ -26,35 +36,118 @@ function bootstrap() {
   app.use(morgan('combined'));
   app.use(requireAuth());
 
-  app.get('/health', (req, res) => {
-    res.json({ service: SERVICE_NAME, status: 'ok', timestamp: new Date().toISOString() });
+  app.get('/health', async (req, res) => {
+    try {
+      await pool.query('SELECT 1');
+      res.json({ service: SERVICE_NAME, status: 'ok', timestamp: new Date().toISOString() });
+    } catch (err) {
+      res.status(500).json({ service: SERVICE_NAME, status: 'error', error: err.message });
+    }
   });
 
   app.get('/config/validate', (req, res) => {
     res.json(buildConfigReport(SERVICE_NAME));
   });
 
-  app.post('/log', (req, res) => {
-    res.status(501).json({ error: 'Not implemented' });
+  app.post('/log', async (req, res) => {
+    const body = req.body || {};
+    const normalized = normalizeLogBody(body);
+
+    if (!normalized.valid) {
+      return res.status(400).json({ error: normalized.error });
+    }
+
+    try {
+      const log = await insertLog(normalized.value);
+      broadcastLog(log);
+      res.status(202).json({ log });
+    } catch (err) {
+      console.error('Failed to insert log', err);
+      res.status(500).json({ error: 'Failed to record log' });
+    }
   });
 
-  app.get('/logs', (req, res) => {
-    res.status(501).json({ error: 'Not implemented' });
+  app.get('/logs', async (req, res) => {
+    if (req.query.since && Number.isNaN(Date.parse(req.query.since))) {
+      return res.status(400).json({ error: 'Invalid since parameter' });
+    }
+
+    let limit;
+    if (req.query.limit !== undefined) {
+      limit = Number(req.query.limit);
+      if (!Number.isFinite(limit) || limit <= 0 || limit > 500) {
+        return res.status(400).json({ error: 'Invalid limit parameter' });
+      }
+    }
+
+    try {
+      const logs = await queryLogs({
+        service: req.query.service,
+        level: req.query.level,
+        correlationId: req.query.corrId,
+        traceId: req.query.traceId,
+        taskId: req.query.taskId,
+        since: req.query.since ? new Date(req.query.since).toISOString() : undefined,
+        limit
+      });
+      res.json({ logs });
+    } catch (err) {
+      console.error('Failed to fetch logs', err);
+      res.status(500).json({ error: 'Failed to fetch logs' });
+    }
   });
 
   app.get('/logs/stream', (req, res) => {
-    res.status(501).json({ error: 'Not implemented' });
+    registerStream(res);
   });
 
-  const server = app.listen(PORT, () => {
+  return app;
+}
+
+function normalizeLogBody(body) {
+  const { service, level = 'info', message, data, taskId, correlationId, traceId } = body;
+
+  if (!service || typeof service !== 'string') {
+    return { valid: false, error: 'service is required' };
+  }
+
+  if (!message || typeof message !== 'string') {
+    return { valid: false, error: 'message is required' };
+  }
+
+  const allowedLevels = new Set(['debug', 'info', 'warn', 'error']);
+  if (level && !allowedLevels.has(level)) {
+    return { valid: false, error: 'level must be one of debug|info|warn|error' };
+  }
+
+  return {
+    valid: true,
+    value: {
+      service,
+      level,
+      message,
+      data: data ?? null,
+      taskId,
+      correlationId,
+      traceId
+    }
+  };
+}
+
+async function start() {
+  const app = await createService();
+  app.listen(PORT, () => {
     console.log(`${SERVICE_NAME} listening on port ${PORT}`);
   });
-
-  return server;
 }
 
 if (require.main === module) {
-  bootstrap();
+  start().catch((err) => {
+    console.error('Fatal logging service error', err);
+    process.exit(1);
+  });
 }
 
-module.exports = { bootstrap };
+module.exports = {
+  createService
+};

@@ -1,4 +1,5 @@
 module.exports = {
   ...require('./config'),
-  ...require('./auth')
+  ...require('./auth'),
+  ...require('./internalFetch')
 };
