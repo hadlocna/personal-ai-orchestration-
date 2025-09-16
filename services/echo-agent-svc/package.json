@@ -1,0 +1,11 @@
+{
+  "name": "@repo/echo-agent-svc",
+  "version": "0.1.0",
+  "main": "src/index.js",
+  "scripts": {
+    "start": "node src/index.js"
+  },
+  "dependencies": {
+    "@repo/common": "file:../../packages/common"
+  }
+}

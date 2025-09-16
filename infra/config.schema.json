@@ -1,0 +1,22 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "ServiceConfig",
+  "type": "object",
+  "properties": {
+    "BASIC_AUTH_USER": { "type": "string", "minLength": 1 },
+    "BASIC_AUTH_PASS": { "type": "string", "minLength": 1 },
+    "INTERNAL_KEY": { "type": "string", "minLength": 16 },
+    "LOGGING_URL": { "type": "string", "format": "uri" },
+    "POSTGRES_URL": { "type": "string", "minLength": 1 },
+    "WS_ALLOWED_ORIGINS": { "type": "string" },
+    "RENDER_API_TOKEN": { "type": "string" }
+  },
+  "required": [
+    "BASIC_AUTH_USER",
+    "BASIC_AUTH_PASS",
+    "INTERNAL_KEY",
+    "LOGGING_URL",
+    "POSTGRES_URL"
+  ],
+  "additionalProperties": true
+}
