@@ -27,3 +27,8 @@ Modular monorepo for a continuously running agent framework that coordinates out
 - Deliver `renderctl-svc` endpoints to automate Render service provisioning and environment synchronization.
 
 Refer to the documentation above for detailed requirement breakdowns, user stories, and the phased roadmap.
+
+## Deployment notes
+- Ensure every service is configured with the same `INTERNAL_KEY`, `BASIC_AUTH_USER`, and `BASIC_AUTH_PASS` so internal calls and Basic Auth succeed.
+- Set `LOGGING_URL` to the deployed logging-svc endpoint; orchestrator subscribes to `/logs/stream` to rebroadcast log frames over WebSocket.
+- Before deploying new environments, run `npm run config:doctor` or each service’s `/config/validate` endpoint to confirm env keys match `infra/config.schema.json`.
