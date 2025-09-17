@@ -9,7 +9,7 @@
 - ✅ Monorepo structure with service folders, dashboard stub, and infra configs.
 - ✅ Shared config validation (`packages/common`) with Ajv + formats.
 - ✅ Render static site build pipeline (`render-build.sh`, `publishPath: dist`).
-- ⬜ Postgres schema + migrations for tasks/logs/events.
+- ✅ Postgres schema + migrations for tasks/logs/events.
 - ⬜ Service implementations (orchestrator, logging, echo agent) using the shared config package.
 - ⬜ Dashboard views (activity stream, task table, config inspector).
 - ⬜ renderctl service endpoints for Render automation.
