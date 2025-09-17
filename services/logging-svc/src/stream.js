@@ -1,3 +1,5 @@
+const dayjs = require('dayjs');
+
 const clients = new Set();
 
 function registerStream(res) {
@@ -8,7 +10,7 @@ function registerStream(res) {
     res.flushHeaders();
   }
 
-  res.write(`event: heartbeat\ndata: ${JSON.stringify({ ts: new Date().toISOString() })}\n\n`);
+  sendEvent(res, 'heartbeat', { ts: dayjs().toISOString() });
 
   clients.add(res);
 
@@ -18,10 +20,22 @@ function registerStream(res) {
 }
 
 function broadcastLog(log) {
-  const frame = `event: log\ndata: ${JSON.stringify(log)}\n\n`;
+  sendEventToAll('log', log);
+}
+
+function broadcastEvent(event) {
+  sendEventToAll('event', event);
+}
+
+function sendEventToAll(type, payload) {
   for (const res of clients) {
-    res.write(frame);
+    sendEvent(res, type, payload);
   }
+}
+
+function sendEvent(res, type, payload) {
+  res.write(`event: ${type}\n`);
+  res.write(`data: ${JSON.stringify(payload)}\n\n`);
 }
 
 function reqOnClose(res, handler) {
@@ -36,5 +50,6 @@ function reqOnClose(res, handler) {
 
 module.exports = {
   registerStream,
-  broadcastLog
+  broadcastLog,
+  broadcastEvent
 };

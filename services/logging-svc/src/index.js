@@ -11,10 +11,10 @@ const {
 const {
   pool,
   initDb,
-  insertLog,
   queryLogs
 } = require('./db');
-const { registerStream, broadcastLog } = require('./stream');
+const { registerStream } = require('./stream');
+const { recordLog, recordTaskEvent } = require('./events');
 
 const SERVICE_NAME = 'logging-svc';
 const PORT = process.env.PORT || 4001;
@@ -58,8 +58,7 @@ async function createService() {
     }
 
     try {
-      const log = await insertLog(normalized.value);
-      broadcastLog(log);
+      const log = await recordLog(normalized.value);
       res.status(202).json({ log });
     } catch (err) {
       console.error('Failed to insert log', err);
@@ -99,6 +98,21 @@ async function createService() {
 
   app.get('/logs/stream', (req, res) => {
     registerStream(res);
+  });
+
+  app.post('/task/event', async (req, res) => {
+    const normalized = normalizeTaskEvent(req.body || {});
+    if (!normalized.valid) {
+      return res.status(400).json({ error: normalized.error });
+    }
+
+    try {
+      const event = await recordTaskEvent(normalized.value);
+      res.status(202).json({ event });
+    } catch (err) {
+      console.error('Failed to record task event', err);
+      res.status(500).json({ error: 'Failed to record task event' });
+    }
   });
 
   return app;
@@ -151,3 +165,31 @@ if (require.main === module) {
 module.exports = {
   createService
 };
+
+function normalizeTaskEvent(body) {
+  const { taskId, actor, kind, data, correlationId, traceId } = body;
+
+  if (!taskId || typeof taskId !== 'string') {
+    return { valid: false, error: 'taskId is required' };
+  }
+
+  if (!actor || typeof actor !== 'string') {
+    return { valid: false, error: 'actor is required' };
+  }
+
+  if (!kind || typeof kind !== 'string') {
+    return { valid: false, error: 'kind is required' };
+  }
+
+  return {
+    valid: true,
+    value: {
+      taskId,
+      actor,
+      kind,
+      data: data ?? null,
+      correlationId: correlationId || null,
+      traceId: traceId || null
+    }
+  };
+}

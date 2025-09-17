@@ -39,10 +39,43 @@ function createServiceLogger({ service, loggingUrl, broadcast }) {
     });
   }
 
+  function emitTaskEvent(event = {}) {
+    const body = {
+      taskId: event.taskId,
+      actor: event.actor,
+      kind: event.kind,
+      data: event.data || null,
+      correlationId: event.correlationId || null,
+      traceId: event.traceId || null
+    };
+
+    queueMicrotask(async () => {
+      try {
+        const response = await internalFetch(`${loggingUrl.replace(/\/$/, '')}/task/event`, {
+          method: 'POST',
+          body
+        });
+
+        if (response.ok) {
+          const json = await response.json();
+          if (broadcast) {
+            broadcast({ type: 'TASK_EVENT', data: json.event });
+          }
+        } else {
+          const errText = await response.text();
+          console.error('Failed to emit task event', response.status, errText);
+        }
+      } catch (err) {
+        console.error('Error emitting task event', err);
+      }
+    });
+  }
+
   return {
     info: (message, metadata) => emit('info', message, metadata),
     warn: (message, metadata) => emit('warn', message, metadata),
-    error: (message, metadata) => emit('error', message, metadata)
+    error: (message, metadata) => emit('error', message, metadata),
+    taskEvent: emitTaskEvent
   };
 }
 

@@ -88,7 +88,7 @@ async function createTask({ type, payload, source, correlationId, traceId, actor
 
     const task = rows[0];
 
-    await insertTaskEvent(client, {
+    const event = await insertTaskEvent(client, {
       taskId: id,
       actor,
       kind: 'created',
@@ -100,7 +100,7 @@ async function createTask({ type, payload, source, correlationId, traceId, actor
     });
 
     await client.query('COMMIT');
-    return task;
+    return { task, event };
   } catch (err) {
     await client.query('ROLLBACK');
     throw err;
@@ -189,8 +189,9 @@ async function applyTaskPatch({ id, ifVersion, patch, event }) {
     }
     const task = rows[0];
 
+    let persistedEvent = null;
     if (event) {
-      await insertTaskEvent(client, {
+      persistedEvent = await insertTaskEvent(client, {
         taskId: id,
         actor: event.actor,
         kind: event.kind,
@@ -199,7 +200,7 @@ async function applyTaskPatch({ id, ifVersion, patch, event }) {
     }
 
     await client.query('COMMIT');
-    return task;
+    return { task, event: persistedEvent };
   } catch (err) {
     if (err instanceof ConflictError) {
       throw err;
@@ -255,11 +256,13 @@ function buildPatchQuery({ id, ifVersion, patch }) {
 }
 
 async function insertTaskEvent(client, { taskId, actor, kind, data }) {
-  await client.query(
+  const { rows } = await client.query(
     `INSERT INTO task_events (id, task_id, actor, kind, data)
-     VALUES ($1, $2, $3, $4, $5::jsonb)`,
+     VALUES ($1, $2, $3, $4, $5::jsonb)
+     RETURNING id, task_id, actor, kind, data, ts_utc`,
     [uuidv4(), taskId, actor, kind, data ? JSON.stringify(data) : null]
   );
+  return rows[0];
 }
 
 module.exports = {

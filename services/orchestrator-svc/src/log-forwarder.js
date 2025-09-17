@@ -12,15 +12,18 @@ function startLogForwarder({ wsHub, logger, loggingUrl }) {
 
     const source = new EventSource(sseUrl, { headers });
 
+    source.addEventListener('log', (event) => {
+      queueMicrotask(() => forwardFrame(wsHub, 'LOG', event));
+    });
+
+    source.addEventListener('event', (event) => {
+      queueMicrotask(() => forwardFrame(wsHub, 'TASK_EVENT', event));
+    });
+
+    source.addEventListener('heartbeat', () => {});
+
     source.onmessage = (event) => {
-      queueMicrotask(() => {
-        try {
-          const payload = JSON.parse(event.data);
-          wsHub.broadcast('LOG', payload);
-        } catch (err) {
-          console.error('Log forwarder parse error', err);
-        }
-      });
+      queueMicrotask(() => forwardFrame(wsHub, 'LOG', event));
     };
 
     source.onerror = (err) => {
@@ -44,6 +47,15 @@ function buildHeaders() {
     headers.Authorization = `Basic ${Buffer.from(`${user}:${pass}`).toString('base64')}`;
   }
   return headers;
+}
+
+function forwardFrame(wsHub, type, event) {
+  try {
+    const payload = JSON.parse(event.data);
+    wsHub.broadcast(type, payload);
+  } catch (err) {
+    console.error('Log forwarder parse error', err);
+  }
 }
 
 module.exports = {
