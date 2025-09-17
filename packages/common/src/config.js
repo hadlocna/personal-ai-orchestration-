@@ -1,6 +1,7 @@
 const fs = require('fs');
 const path = require('path');
 const Ajv = require('ajv');
+const addFormats = require('ajv-formats');
 const dotenv = require('dotenv');
 
 const ENV_PATH = path.resolve(process.cwd(), '.env');
@@ -15,6 +16,7 @@ const requiredKeys = new Set(schema.required || []);
 const optionalKeys = Object.keys(schema.properties || {}).filter((key) => !requiredKeys.has(key));
 
 const ajv = new Ajv({ allErrors: true, allowUnionTypes: true });
+addFormats(ajv);
 const validateFn = ajv.compile(schema);
 
 function validateEnv(env = process.env) {
