@@ -8,7 +8,8 @@
   ],
   "scripts": {
     "lint": "echo 'lint not configured'",
-    "config:doctor": "node scripts/config-doctor.js"
+    "config:doctor": "node scripts/config-doctor.js",
+    "test:smoke": "node scripts/smoke-test.js"
   },
   "dependencies": {
     "ajv": "^8.12.0",
