@@ -47,9 +47,9 @@
    - Authentication handling (Basic Auth prompt or credential storage).
 
 7. **Render Automation**
-   - `renderctl-svc` minimal API wrapping Render REST: create service, apply env, trigger deploy.
-   - Support reading definitions from `infra/render.blueprint.yaml` (apply/sync).
-   - CLI scripts or UI wiring for operators to execute renderctl flows.
+   - ✅ `renderctl-svc` minimal API wrapping Render REST: create service, apply env, trigger deploy.
+   - ⬜ Support reading definitions from `infra/render.blueprint.yaml` (apply/sync).
+   - ⬜ CLI scripts or UI wiring for operators to execute renderctl flows.
 
 8. **Ops & QA**
    - Local dev scripts to run services (npm scripts or docker-compose).

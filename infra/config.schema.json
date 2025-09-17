@@ -10,7 +10,8 @@
     "POSTGRES_URL": { "type": "string", "minLength": 1 },
     "ECHO_AGENT_URL": { "type": "string", "format": "uri" },
     "WS_ALLOWED_ORIGINS": { "type": "string" },
-    "RENDER_API_TOKEN": { "type": "string" }
+    "RENDER_API_TOKEN": { "type": "string" },
+    "RENDER_API_BASE_URL": { "type": "string" }
   },
   "required": [
     "BASIC_AUTH_USER",

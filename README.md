@@ -28,6 +28,12 @@ Modular monorepo for a continuously running agent framework that coordinates out
 
 Refer to the documentation above for detailed requirement breakdowns, user stories, and the phased roadmap.
 
+## Render Control Quickstart
+- Ensure `RENDER_API_TOKEN` (and optional `RENDER_API_BASE_URL`) are set for `renderctl-svc`.
+- `POST /render/services` accepts a `service` payload mirroring Render's API and an optional `env` object for initial secrets.
+- `PATCH /render/services/:id/env` bulk-updates environment variables with optional `clear` flag to wipe existing keys.
+- `POST /render/deploy/:id` triggers a deploy immediately; `GET /render/services` lists current services with optional `type` and `name` filters.
+
 ## Deployment notes
 - Ensure every service is configured with the same `INTERNAL_KEY`, `BASIC_AUTH_USER`, and `BASIC_AUTH_PASS` so internal calls and Basic Auth succeed.
 - Set `LOGGING_URL` to the deployed logging-svc endpoint; orchestrator subscribes to `/logs/stream` to rebroadcast log frames over WebSocket.

@@ -67,11 +67,12 @@
 ### renderctl-svc
 - **Responsibilities**: Render infrastructure automation, eliminating manual dashboard steps.
 - **Key APIs**:
-  - `POST /render/services` — create services with repo path, branch, plan, publish directory.
-  - `PATCH /render/services/:id/env` — bulk apply env vars (mirrors `.env.example`).
-  - `POST /render/deploy/:id` — trigger manual deploys when auto-deploy is disabled.
-  - `GET /render/services` — list status metadata for dashboard.
+  - `POST /render/services` — create services with repo metadata, build settings, and optional env payloads.
+  - `PATCH /render/services/:id/env` — bulk apply env vars (mirrors `.env.example`), optionally clearing existing keys.
+  - `POST /render/deploy/:id` — trigger manual deploys when auto-deploy is disabled or out-of-band redeploys are needed.
+  - `GET /render/services` — list status metadata for dashboard filtering by name or type.
 - **Security**: Basic Auth + `RENDER_API_TOKEN`. Optionally restricted by IP in later phases.
+- **Configuration**: accepts `RENDER_API_BASE_URL` override for staging/mocked Render environments.
 
 ### dashboard-web
 - **Responsibilities**: operator UI for monitoring, manual task creation, configuration health.
