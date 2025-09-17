@@ -11,7 +11,12 @@
     "ECHO_AGENT_URL": { "type": "string", "format": "uri" },
     "WS_ALLOWED_ORIGINS": { "type": "string" },
     "RENDER_API_TOKEN": { "type": "string" },
-    "RENDER_API_BASE_URL": { "type": "string" }
+    "RENDER_API_BASE_URL": { "type": "string" },
+    "RENDER_MONITOR_SERVICES": { "type": "string" },
+    "RENDER_MONITOR_INTERVAL_MS": { "type": "string" },
+    "RENDER_STATIC_SITE_ROOT_DIR": { "type": "string" },
+    "RENDER_STATIC_SITE_PUBLISH_PATH": { "type": "string" },
+    "RENDER_STATIC_SITE_BUILD_COMMAND": { "type": "string" }
   },
   "required": [
     "BASIC_AUTH_USER",

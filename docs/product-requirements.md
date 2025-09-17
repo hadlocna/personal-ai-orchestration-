@@ -73,6 +73,7 @@
   - `GET /render/services` — list status metadata for dashboard filtering by name or type.
 - **Security**: Basic Auth + `RENDER_API_TOKEN`. Optionally restricted by IP in later phases.
 - **Configuration**: accepts `RENDER_API_BASE_URL` override for staging/mocked Render environments.
+- **Automation**: background monitor (configurable via `RENDER_MONITOR_SERVICES`) inspects recent deploys, recognizes common static-site build failures (missing publish directory, empty build command), applies standardized fixes (`rootDir`, `buildCommand`, `publishPath`) and triggers a redeploy.
 
 ### dashboard-web
 - **Responsibilities**: operator UI for monitoring, manual task creation, configuration health.

@@ -43,6 +43,21 @@ async function listServices(client, params = {}) {
   return response.data;
 }
 
+async function getService(client, serviceId) {
+  const response = await client.get(`/services/${serviceId}`);
+  return response.data;
+}
+
+async function getServiceDeploys(client, serviceId, params = {}) {
+  const response = await client.get(`/services/${serviceId}/deploys`, { params });
+  return response.data;
+}
+
+async function updateService(client, serviceId, payload) {
+  const response = await client.patch(`/services/${serviceId}`, payload);
+  return response.data;
+}
+
 async function updateEnvVars(client, serviceId, envVars, options = {}) {
   const { clearOtherVars = false } = options;
 
@@ -81,6 +96,9 @@ module.exports = {
   createClient,
   createService,
   listServices,
+  getService,
+  getServiceDeploys,
+  updateService,
   updateEnvVars,
   triggerDeploy
 };

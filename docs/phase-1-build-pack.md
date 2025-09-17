@@ -48,6 +48,7 @@
 
 7. **Render Automation**
    - ✅ `renderctl-svc` minimal API wrapping Render REST: create service, apply env, trigger deploy.
+   - ✅ Automated build failure monitor fixes common static site misconfiguration and redeploys.
    - ⬜ Support reading definitions from `infra/render.blueprint.yaml` (apply/sync).
    - ⬜ CLI scripts or UI wiring for operators to execute renderctl flows.
 

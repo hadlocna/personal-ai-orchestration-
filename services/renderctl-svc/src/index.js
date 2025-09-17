@@ -14,6 +14,7 @@ const {
   updateEnvVars,
   triggerDeploy
 } = require('./renderApi');
+const { startMonitor } = require('./monitor');
 
 const SERVICE_NAME = 'renderctl-svc';
 const PORT = process.env.PORT || 4010;
@@ -100,6 +101,8 @@ function bootstrap() {
   const server = app.listen(PORT, () => {
     console.log(`${SERVICE_NAME} listening on port ${PORT}`);
   });
+
+  startMonitor({ getClient, logger: console });
 
   return server;
 }
