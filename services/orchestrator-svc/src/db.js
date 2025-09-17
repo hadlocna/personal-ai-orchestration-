@@ -1,8 +1,11 @@
 const { Pool } = require('pg');
 const { v4: uuidv4 } = require('uuid');
 
+const useSsl = process.env.PGSSL_DISABLE !== 'true' && process.env.NODE_ENV !== 'development';
+
 const pool = new Pool({
-  connectionString: process.env.POSTGRES_URL
+  connectionString: process.env.POSTGRES_URL,
+  ssl: useSsl ? { rejectUnauthorized: false } : false
 });
 
 pool.on('error', (err) => {
