@@ -1,6 +1,6 @@
 # Personal AI Orchestration
 
-Modular monorepo for a continuously running agent framework that coordinates outbound communications, deployment automation, and observability. The layout is optimized for Render deployments and follows the phase-one plan:
+Modular monorepo for a continuously running agent framework that coordinates outbound communications, deployment automation, and observability. The layout is optimized for Render deployments and implements the Phase 1 "Build Pack" plan defined in [`docs/product-requirements.md`](docs/product-requirements.md).
 
 - **services/** — Each backend service (orchestrator, logging, echo agent, render control) bundles its own source and Dockerfile.
 - **dashboard-web/** — Static dashboard that surfaces task activity, logs, config validation, and manual task triggers.
@@ -15,9 +15,14 @@ Modular monorepo for a continuously running agent framework that coordinates out
 4. Hit `GET /config/validate` on any service to confirm environment variable validation using `infra/config.schema.json`.
 5. Build Docker images from the repo root; each service Dockerfile expects the full monorepo context and executes `npm install --omit=dev` during build.
 
-## Next Steps
+## Documentation
+- [`docs/product-requirements.md`](docs/product-requirements.md) — comprehensive PRD covering architecture, module specs, APIs, data model, security, and roadmap.
+- [`docs/phase-1-build-pack.md`](docs/phase-1-build-pack.md) — execution guide for Phase 1 with status, deliverables, milestones, and acceptance criteria.
 
-- Flesh out service implementations with Postgres integrations, WebSocket handling, and task orchestration logic.
-- Create database migrations for tasks, task events, agent heartbeats, and logs tables.
-- Implement the dashboard SPA and WebSocket client for unified visibility.
-- Extend `render.blueprint.yaml` and `renderctl-svc` to manage Render resources via API.
+## Phase 1 Focus Areas
+- Implement database-backed task and log storage with optimistic locking and event trails.
+- Finish service endpoints (`logging-svc`, `orchestrator-svc`, `echo-agent-svc`) using shared config + auth primitives.
+- Build out dashboard views (activity stream, task manager, config inspector) and hook up WebSocket updates.
+- Deliver `renderctl-svc` endpoints to automate Render service provisioning and environment synchronization.
+
+Refer to the documentation above for detailed requirement breakdowns, user stories, and the phased roadmap.
