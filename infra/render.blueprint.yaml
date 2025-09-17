@@ -1,9 +1,11 @@
 version: "1"
 
 services:
-  - type: static_site
-    name: dashboard-web
+  - name: dashboard-web
+    type: static_site
     plan: starter
-    rootDir: dashboard-web
-    buildCommand: npm install --prefix dashboard-web && npm run build --prefix dashboard-web
-    publishPath: dist
+    serviceDetails:
+      rootDir: .
+      buildCommand: ./render-build.sh
+      publishPath: dashboard-web/dist
+    env: {}

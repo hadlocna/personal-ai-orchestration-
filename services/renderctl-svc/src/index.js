@@ -15,6 +15,7 @@ const {
   triggerDeploy
 } = require('./renderApi');
 const { startMonitor } = require('./monitor');
+const { applyBlueprint } = require('./blueprint');
 
 const SERVICE_NAME = 'renderctl-svc';
 const PORT = process.env.PORT || 4010;
@@ -96,6 +97,17 @@ function bootstrap() {
       name: req.query.name
     });
     res.json({ services });
+  }));
+
+  app.post('/render/blueprint/apply', asyncHandler(async (req, res) => {
+    const { blueprintPath, dryRun } = req.body || {};
+    const result = await applyBlueprint({
+      getClient,
+      blueprintPath,
+      dryRun: Boolean(dryRun),
+      logger: console
+    });
+    res.status(dryRun ? 200 : 202).json(result);
   }));
 
   const server = app.listen(PORT, () => {

@@ -74,6 +74,7 @@
 - **Security**: Basic Auth + `RENDER_API_TOKEN`. Optionally restricted by IP in later phases.
 - **Configuration**: accepts `RENDER_API_BASE_URL` override for staging/mocked Render environments.
 - **Automation**: background monitor (configurable via `RENDER_MONITOR_SERVICES`) inspects recent deploys, recognizes common static-site build failures (missing publish directory, empty build command), applies standardized fixes (`rootDir`, `buildCommand`, `publishPath`) and triggers a redeploy.
+- **Infrastructure as Code**: `/render/blueprint/apply` consumes `infra/render.blueprint.yaml` to reconcile service details and env vars against Render, with `dryRun` support for previewing changes.
 
 ### dashboard-web
 - **Responsibilities**: operator UI for monitoring, manual task creation, configuration health.

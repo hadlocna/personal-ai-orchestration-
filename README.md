@@ -34,6 +34,7 @@ Refer to the documentation above for detailed requirement breakdowns, user stori
 - `PATCH /render/services/:id/env` bulk-updates environment variables with optional `clear` flag to wipe existing keys.
 - `POST /render/deploy/:id` triggers a deploy immediately; `GET /render/services` lists current services with optional `type` and `name` filters.
 - Background monitoring can be enabled via `RENDER_MONITOR_SERVICES` (comma-separated names or `id:<serviceId>`). When a monitored static site build fails with missing publish directory or build command, renderctl patches the service to use `rootDir`=`.` / `buildCommand`=`./render-build.sh` / `publishPath`=`dashboard-web/dist` and reruns the deploy. Tune via `RENDER_STATIC_SITE_*` env vars.
+- `POST /render/blueprint/apply` reads `infra/render.blueprint.yaml` (or a supplied `blueprintPath`) and updates each listed service's `serviceDetails` and env vars. Pass `{ "dryRun": true }` to preview changes without touching Render.
 
 ## Deployment notes
 - Ensure every service is configured with the same `INTERNAL_KEY`, `BASIC_AUTH_USER`, and `BASIC_AUTH_PASS` so internal calls and Basic Auth succeed.
