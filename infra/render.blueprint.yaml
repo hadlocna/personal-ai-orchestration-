@@ -1,2 +1,9 @@
-# Render infrastructure blueprint placeholder
-# Define services, env vars, and dependencies here when ready.
+version: "1"
+
+services:
+  - type: static_site
+    name: dashboard-web
+    plan: starter
+    rootDir: dashboard-web
+    buildCommand: npm install --prefix dashboard-web && npm run build --prefix dashboard-web
+    publishPath: dist
