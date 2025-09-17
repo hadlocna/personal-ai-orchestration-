@@ -404,43 +404,6 @@ async function handleEchoTask({ task }) {
   return response.json();
 }
 
-function startLogForwarder({ logger, wsHub }) {
-  if (!process.env.LOGGING_URL) return;
-
-  const sseUrl = new URL('/logs/stream', process.env.LOGGING_URL);
-
-  try {
-    const eventSource = new (require('eventsource'))(sseUrl, {
-      headers: {
-        Authorization: buildBasicAuthHeader(),
-        'X-INTERNAL-KEY': process.env.INTERNAL_KEY || ''
-      }
-    });
-
-    eventSource.onmessage = (evt) => {
-      try {
-        const data = JSON.parse(evt.data);
-        wsHub.broadcast('LOG', data);
-      } catch (err) {
-        console.error('Failed to parse log stream frame', err);
-      }
-    };
-
-    eventSource.onerror = (err) => {
-      console.error('Log stream error', err);
-    };
-  } catch (err) {
-    logger.error('LOG_STREAM_START_FAILED', { data: { error: err.message } });
-  }
-}
-
-function buildBasicAuthHeader() {
-  const user = process.env.BASIC_AUTH_USER;
-  const pass = process.env.BASIC_AUTH_PASS;
-  if (!user || !pass) return '';
-  return `Basic ${Buffer.from(`${user}:${pass}`).toString('base64')}`;
-}
-
 async function start() {
   const { server } = await createService();
   server.listen(PORT, () => {
