@@ -8,7 +8,8 @@ const {
   ensureConfig,
   buildConfigReport,
   requireAuth,
-  internalFetch
+  internalFetch,
+  createServiceLogger
 } = require('@repo/common');
 
 const {
@@ -39,6 +40,11 @@ async function createService() {
   const app = express();
   const server = http.createServer(app);
   const wsHub = setupWebsocket(server);
+  const logger = createServiceLogger({
+    service: SERVICE_NAME,
+    loggingUrl: process.env.LOGGING_URL,
+    broadcast: ({ type, data }) => wsHub.broadcast(type, data)
+  });
 
   app.use(helmet());
   app.use(express.json({ limit: '1mb' }));
@@ -86,13 +92,21 @@ async function createService() {
         actor: deriveActor(req)
       });
 
+      logger.info('TASK_RECEIVED', {
+        data: { id: task.id, type, source, correlationId: correlationId || null }
+      });
+
       wsHub.broadcast('TASK_UPDATE', { task });
 
-      queueMicrotask(() => processTask(task, wsHub));
+      queueMicrotask(() => processTask(task, { wsHub, logger }));
 
       res.status(202).json({ id: task.id, traceId: task.trace_id, status: task.status });
     } catch (err) {
       console.error('Failed to create task', err);
+      logger.error('TASK_CREATE_FAILED', {
+        data: { error: err.message, type, source },
+        correlationId: correlationId || null
+      });
       res.status(500).json({ error: 'Failed to create task' });
     }
   });
@@ -168,14 +182,20 @@ async function createService() {
       res.json({ task });
     } catch (err) {
       if (err instanceof ConflictError) {
+        logger.warn('TASK_PATCH_CONFLICT', {
+          data: { id: req.params.id, requestedVersion: ifVersion }
+        });
         return res.status(409).json({ error: 'Version conflict' });
       }
       console.error('Failed to patch task', err);
+      logger.error('TASK_PATCH_FAILED', {
+        data: { id: req.params.id, error: err.message }
+      });
       res.status(500).json({ error: 'Failed to patch task' });
     }
   });
 
-  return { app, server, wsHub };
+  return { app, server, wsHub, logger };
 }
 
 function deriveActor(req) {
@@ -225,7 +245,7 @@ function previewResult(result) {
   return str.slice(0, 256);
 }
 
-async function processTask(task, wsHub) {
+async function processTask(task, { wsHub, logger }) {
   let runningTask = task;
   try {
     runningTask = await applyTaskPatch({
@@ -239,6 +259,11 @@ async function processTask(task, wsHub) {
       }
     });
     wsHub.broadcast('TASK_UPDATE', { task: runningTask });
+    logger.info('TASK_RUNNING', {
+      data: { id: task.id, type: task.type },
+      traceId: task.trace_id,
+      correlationId: task.correlation_id
+    });
 
     const handler = getHandlerForType(task.type);
     const result = await handler({ task: runningTask });
@@ -255,8 +280,18 @@ async function processTask(task, wsHub) {
     });
 
     wsHub.broadcast('TASK_UPDATE', { task: completedTask });
+    logger.info('TASK_COMPLETED', {
+      data: { id: task.id, type: task.type },
+      traceId: task.trace_id,
+      correlationId: task.correlation_id
+    });
   } catch (err) {
     console.error('Task processing failed', err);
+    logger.error('TASK_FAILED', {
+      data: { id: task.id, error: err.message },
+      traceId: task.trace_id,
+      correlationId: task.correlation_id
+    });
     const latestVersion = runningTask?.version ?? task.version;
     try {
       const erroredTask = await applyTaskPatch({
@@ -275,6 +310,9 @@ async function processTask(task, wsHub) {
       wsHub.broadcast('TASK_UPDATE', { task: erroredTask });
     } catch (patchErr) {
       console.error('Failed to mark task as error', patchErr);
+      logger.error('TASK_ERROR_PATCH_FAILED', {
+        data: { id: task.id, error: patchErr.message }
+      });
     }
   }
 }

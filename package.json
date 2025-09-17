@@ -7,7 +7,8 @@
     "packages/*"
   ],
   "scripts": {
-    "lint": "echo 'lint not configured'"
+    "lint": "echo 'lint not configured'",
+    "config:doctor": "node scripts/config-doctor.js"
   },
   "dependencies": {
     "ajv": "^8.12.0",
