@@ -5,7 +5,8 @@ const morgan = require('morgan');
 const {
   ensureConfig,
   buildConfigReport,
-  requireAuth
+  requireAuth,
+  createServiceLogger
 } = require('@repo/common');
 
 const SERVICE_NAME = 'echo-agent-svc';
@@ -20,6 +21,10 @@ function bootstrap() {
   }
 
   const app = express();
+  const logger = createServiceLogger({
+    service: SERVICE_NAME,
+    loggingUrl: process.env.LOGGING_URL
+  });
 
   app.use(helmet());
   app.use(express.json({ limit: '256kb' }));
@@ -40,11 +45,23 @@ function bootstrap() {
     }
 
     const { payload = null } = req.body || {};
-    res.json({
+    logger.info('ECHO_REQUEST', {
+      data: { payload },
+      traceId: req.body?.traceId || null
+    });
+
+    const responseBody = {
       service: SERVICE_NAME,
       received: payload,
       timestamp: new Date().toISOString()
+    };
+
+    logger.info('ECHO_RESPONSE', {
+      data: { payload: responseBody.received },
+      traceId: req.body?.traceId || null
     });
+
+    res.json(responseBody);
   });
 
   const server = app.listen(PORT, () => {
