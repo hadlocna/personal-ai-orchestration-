@@ -7,6 +7,7 @@ WORKDIR /app
 COPY package.json package-lock.json ./
 COPY packages ./packages
 COPY services ./services
+COPY infra ./infra
 
 RUN npm install --omit=dev
 
