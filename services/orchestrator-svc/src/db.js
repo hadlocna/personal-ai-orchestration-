@@ -5,7 +5,12 @@ const useSsl = process.env.PGSSL_DISABLE !== 'true' && process.env.NODE_ENV !== 
 
 const pool = new Pool({
   connectionString: process.env.POSTGRES_URL,
-  ssl: useSsl ? { rejectUnauthorized: false } : false
+  ssl: useSsl
+    ? {
+        rejectUnauthorized: false,
+        require: true
+      }
+    : false
 });
 
 pool.on('error', (err) => {
