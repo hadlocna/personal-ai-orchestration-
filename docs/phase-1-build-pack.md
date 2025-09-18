@@ -10,9 +10,9 @@
 - ✅ Shared config validation (`packages/common`) with Ajv + formats.
 - ✅ Render static site build pipeline (`render-build.sh`, `publishPath: dist`).
 - ✅ Postgres schema + migrations for tasks/logs/events.
-- ⬜ Service implementations (orchestrator, logging, echo agent) using the shared config package.
-- ⬜ Dashboard views (activity stream, task table, config inspector).
-- ⬜ renderctl service endpoints for Render automation.
+- ✅ Service implementations (orchestrator, logging, echo agent) using the shared config package.
+- ✅ Dashboard views (activity stream, task table, config inspector).
+- ✅ renderctl service endpoints for Render automation.
 
 ## Deliverables & Tasks
 1. **Monorepo Foundations** *(done)*
@@ -46,11 +46,11 @@
    - Views: activity stream, tasks table, new-task form, config validation matrix.
    - Authentication handling (Basic Auth prompt or credential storage).
 
-7. **Render Automation**
-   - ✅ `renderctl-svc` minimal API wrapping Render REST: create service, apply env, trigger deploy.
-   - ✅ Automated build failure monitor fixes common static site misconfiguration and redeploys.
-   - ✅ Support reading definitions from `infra/render.blueprint.yaml` (apply/sync).
-   - ✅ CLI script for renderctl operator workflows (`scripts/render-status.js`) ready for operators (Codex agent, 2025-09-18).
+7. **Render Automation** *(done)*
+   - `renderctl-svc` minimal API wrapping Render REST: create service, apply env, trigger deploy.
+   - Automated build failure monitor fixes common static site misconfiguration and redeploys.
+   - Support reading definitions from `infra/render.blueprint.yaml` (apply/sync).
+   - CLI scripts for operators: `scripts/render-status.js` (deploy status summary) and `scripts/renderctl-ops.js` (list, deploy, env patch, blueprint apply).
 
 8. **Ops & QA**
    - ✅ Local dev scripts to run services (npm scripts or docker-compose) via `npm run dev:services` (Codex agent, 2025-09-18).

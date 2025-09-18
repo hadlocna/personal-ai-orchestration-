@@ -50,6 +50,4 @@
  * @property {Object} data
  */
 
-module.exports = {
-  // Expose typedefs for tooling via require side-effect
-};
+export {};

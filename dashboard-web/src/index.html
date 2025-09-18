@@ -4,708 +4,186 @@
     <meta charset="utf-8" />
     <title>Personal AI Orchestration Dashboard</title>
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <style>
-      :root {
-        color-scheme: dark;
-        --bg: #0f172a;
-        --panel: #111c33;
-        --panel-border: rgba(148, 163, 184, 0.2);
-        --panel-shadow: 0 18px 45px rgba(15, 23, 42, 0.55);
-        --text: #e2e8f0;
-        --text-subtle: #94a3b8;
-        --accent: #38bdf8;
-        --accent-strong: #0ea5e9;
-        --danger: #f87171;
-        --warn: #fbbf24;
-        --success: #34d399;
-        --radius: 14px;
-        --mono: "SFMono-Regular", ui-monospace, SFMono-Regular, "SF Mono", Menlo, Monaco, Consolas,
-          "Liberation Mono", "Courier New", monospace;
-      }
-
-      * {
-        box-sizing: border-box;
-      }
-
-      body {
-        margin: 0;
-        font-family: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-        background: radial-gradient(circle at 20% 20%, rgba(56, 189, 248, 0.08), transparent 60%),
-          radial-gradient(circle at 80% 0%, rgba(59, 130, 246, 0.12), transparent 55%), var(--bg);
-        color: var(--text);
-        min-height: 100vh;
-      }
-
-      a {
-        color: var(--accent);
-      }
-
-      .app {
-        max-width: 1200px;
-        margin: 0 auto;
-        padding: 2.5rem 1.5rem 4rem;
-        display: flex;
-        flex-direction: column;
-        gap: 1.75rem;
-      }
-
-      header.app__header {
-        display: flex;
-        flex-direction: column;
-        gap: 0.75rem;
-      }
-
-      header.app__header h1 {
-        font-size: clamp(1.85rem, 2vw + 1.2rem, 2.65rem);
-        font-weight: 600;
-        margin: 0;
-      }
-
-      header.app__header p {
-        margin: 0;
-        max-width: 720px;
-        color: var(--text-subtle);
-        line-height: 1.6;
-      }
-
-      .status-banner {
-        padding: 0.75rem 1rem;
-        border-radius: var(--radius);
-        border: 1px solid rgba(148, 163, 184, 0.2);
-        background: rgba(15, 23, 42, 0.65);
-        font-weight: 500;
-      }
-
-      .status-banner.status-ok {
-        border-color: rgba(52, 211, 153, 0.45);
-        background: rgba(52, 211, 153, 0.12);
-        color: #bbf7d0;
-      }
-
-      .status-banner.status-error {
-        border-color: rgba(248, 113, 113, 0.45);
-        background: rgba(248, 113, 113, 0.12);
-        color: #fecaca;
-      }
-
-      .status-banner.status-pending {
-        border-color: rgba(250, 204, 21, 0.45);
-        background: rgba(250, 204, 21, 0.12);
-        color: #fef3c7;
-      }
-
-      .panel {
-        background: linear-gradient(160deg, rgba(15, 23, 42, 0.85), rgba(15, 24, 52, 0.92));
-        border-radius: var(--radius);
-        border: 1px solid var(--panel-border);
-        box-shadow: var(--panel-shadow);
-        padding: 1.5rem;
-        display: flex;
-        flex-direction: column;
-        gap: 1rem;
-      }
-
-      .panel__header {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 0.75rem;
-        justify-content: space-between;
-        align-items: flex-end;
-      }
-
-      .panel__header h2 {
-        margin: 0;
-        font-size: 1.25rem;
-        font-weight: 600;
-      }
-
-      .panel__controls {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 0.75rem;
-        align-items: center;
-      }
-
-      .panel__controls label {
-        flex-direction: row;
-        align-items: center;
-        gap: 0.5rem;
-      }
-
-      .panel__controls label span {
-        color: var(--text-subtle);
-        font-size: 0.9rem;
-      }
-
-      .form-grid {
-        display: grid;
-        gap: 1rem;
-      }
-
-      .form-grid.two-column {
-        grid-template-columns: minmax(0, 1fr);
-      }
-
-      @media (min-width: 720px) {
-        .form-grid.two-column {
-          grid-template-columns: repeat(2, minmax(0, 1fr));
-        }
-      }
-
-      label {
-        display: flex;
-        flex-direction: column;
-        gap: 0.45rem;
-        font-size: 0.95rem;
-      }
-
-      label span {
-        color: var(--text-subtle);
-      }
-
-      input[type='url'],
-      input[type='text'],
-      input[type='password'],
-      textarea,
-      select {
-        width: 100%;
-        padding: 0.6rem 0.75rem;
-        border-radius: 0.75rem;
-        border: 1px solid rgba(148, 163, 184, 0.25);
-        background: rgba(15, 23, 42, 0.65);
-        color: var(--text);
-        font-size: 0.95rem;
-        transition: border 0.2s ease, box-shadow 0.2s ease;
-      }
-
-      input:focus,
-      textarea:focus,
-      select:focus {
-        outline: none;
-        border-color: rgba(56, 189, 248, 0.55);
-        box-shadow: 0 0 0 3px rgba(56, 189, 248, 0.25);
-      }
-
-      textarea {
-        min-height: 160px;
-        font-family: var(--mono);
-        line-height: 1.4;
-        resize: vertical;
-      }
-
-      .form-actions {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 0.75rem;
-      }
-
-      button.button {
-        border: none;
-        border-radius: 999px;
-        padding: 0.55rem 1.35rem;
-        font-size: 0.95rem;
-        font-weight: 500;
-        cursor: pointer;
-        transition: transform 0.2s ease, box-shadow 0.2s ease, background 0.2s ease;
-        background: rgba(148, 163, 184, 0.16);
-        color: var(--text);
-      }
-
-      button.button:hover:not(:disabled) {
-        transform: translateY(-1px);
-        box-shadow: 0 10px 25px rgba(15, 23, 42, 0.45);
-      }
-
-      button.button:disabled {
-        opacity: 0.6;
-        cursor: not-allowed;
-      }
-
-      button.button.primary {
-        background: linear-gradient(120deg, rgba(56, 189, 248, 0.9), rgba(14, 165, 233, 0.9));
-        color: #0f172a;
-      }
-
-      button.button.ghost {
-        background: transparent;
-        border: 1px solid rgba(148, 163, 184, 0.3);
-      }
-
-      .hint {
-        margin: 0;
-        font-size: 0.85rem;
-        color: var(--text-subtle);
-      }
-
-      .feedback {
-        padding: 0.75rem 1rem;
-        border-radius: 0.85rem;
-        border: 1px solid rgba(148, 163, 184, 0.2);
-        background: rgba(15, 23, 42, 0.55);
-        font-size: 0.9rem;
-        display: none;
-      }
-
-      .feedback.is-visible {
-        display: block;
-      }
-
-      .feedback.success {
-        border-color: rgba(52, 211, 153, 0.45);
-        background: rgba(52, 211, 153, 0.1);
-        color: #bbf7d0;
-      }
-
-      .feedback.error {
-        border-color: rgba(248, 113, 113, 0.45);
-        background: rgba(248, 113, 113, 0.12);
-        color: #fecaca;
-      }
-
-      .panel-grid {
-        display: grid;
-        gap: 1.5rem;
-      }
-
-      @media (min-width: 960px) {
-        .panel-grid.two-column {
-          grid-template-columns: repeat(2, minmax(0, 1fr));
-        }
-      }
-
-      .table-wrapper {
-        overflow-x: auto;
-        border-radius: 0.75rem;
-        border: 1px solid rgba(148, 163, 184, 0.15);
-      }
-
-      table {
-        width: 100%;
-        border-collapse: collapse;
-        font-size: 0.9rem;
-      }
-
-      thead {
-        background: rgba(15, 23, 42, 0.75);
-      }
-
-      th,
-      td {
-        padding: 0.75rem 0.85rem;
-        text-align: left;
-        border-bottom: 1px solid rgba(148, 163, 184, 0.12);
-      }
-
-      tbody tr:hover {
-        background: rgba(56, 189, 248, 0.08);
-      }
-
-      tbody tr.is-selected {
-        background: rgba(14, 165, 233, 0.18);
-      }
-
-      td .mono,
-      .mono {
-        font-family: var(--mono);
-      }
-
-      .pill {
-        display: inline-flex;
-        align-items: center;
-        gap: 0.4rem;
-        border-radius: 999px;
-        padding: 0.2rem 0.65rem;
-        font-size: 0.75rem;
-        letter-spacing: 0.02em;
-        text-transform: uppercase;
-        background: rgba(148, 163, 184, 0.18);
-        border: 1px solid rgba(148, 163, 184, 0.28);
-      }
-
-      .pill.status-queued {
-        border-color: rgba(250, 204, 21, 0.45);
-        background: rgba(250, 204, 21, 0.1);
-        color: #fde68a;
-      }
-
-      .pill.status-running {
-        border-color: rgba(56, 189, 248, 0.45);
-        background: rgba(56, 189, 248, 0.15);
-        color: #bae6fd;
-      }
-
-      .pill.status-done {
-        border-color: rgba(52, 211, 153, 0.45);
-        background: rgba(52, 211, 153, 0.15);
-        color: #bbf7d0;
-      }
-
-      .pill.status-error {
-        border-color: rgba(248, 113, 113, 0.45);
-        background: rgba(248, 113, 113, 0.15);
-        color: #fecaca;
-      }
-
-      .pill.status-ok {
-        border-color: rgba(52, 211, 153, 0.45);
-        background: rgba(52, 211, 153, 0.12);
-        color: #bbf7d0;
-      }
-
-      .pill.status-unknown {
-        border-color: rgba(148, 163, 184, 0.35);
-        background: rgba(148, 163, 184, 0.15);
-        color: var(--text-subtle);
-      }
-
-      .pill.log-level-info {
-        border-color: rgba(56, 189, 248, 0.35);
-        background: rgba(56, 189, 248, 0.12);
-        color: #bae6fd;
-      }
-
-      .pill.log-level-warn {
-        border-color: rgba(250, 204, 21, 0.45);
-        background: rgba(250, 204, 21, 0.12);
-        color: #fef3c7;
-      }
-
-      .pill.log-level-error {
-        border-color: rgba(248, 113, 113, 0.45);
-        background: rgba(248, 113, 113, 0.12);
-        color: #fecaca;
-      }
-
-      .timeline {
-        list-style: none;
-        margin: 0;
-        padding: 0;
-        display: flex;
-        flex-direction: column;
-        gap: 0.95rem;
-      }
-
-      .timeline__item {
-        display: grid;
-        grid-template-columns: auto minmax(0, 1fr);
-        gap: 0.85rem;
-      }
-
-      .timeline__item--empty {
-        grid-template-columns: minmax(0, 1fr);
-        color: var(--text-subtle);
-      }
-
-      .timeline__ts {
-        font-family: var(--mono);
-        font-size: 0.8rem;
-        color: var(--text-subtle);
-        padding-top: 0.15rem;
-      }
-
-      .timeline__content {
-        background: rgba(15, 23, 42, 0.6);
-        border-radius: 0.85rem;
-        border: 1px solid rgba(148, 163, 184, 0.12);
-        padding: 0.85rem 1rem;
-        display: flex;
-        flex-direction: column;
-        gap: 0.5rem;
-      }
-
-      .timeline__label {
-        font-weight: 500;
-      }
-
-      .timeline__text {
-        margin: 0;
-        color: var(--text-subtle);
-        font-size: 0.88rem;
-        line-height: 1.5;
-      }
-
-      .timeline__details summary {
-        cursor: pointer;
-        font-size: 0.85rem;
-        color: var(--accent);
-      }
-
-      .timeline__details pre,
-      pre.json-block {
-        margin: 0;
-        background: rgba(15, 23, 42, 0.6);
-        border-radius: 0.65rem;
-        border: 1px solid rgba(148, 163, 184, 0.15);
-        padding: 0.75rem;
-        font-family: var(--mono);
-        font-size: 0.78rem;
-        white-space: pre-wrap;
-        word-break: break-word;
-      }
-
-      .detail-meta {
-        display: grid;
-        gap: 0.75rem;
-        font-size: 0.9rem;
-      }
-
-      .detail-row {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 0.5rem;
-      }
-
-      .detail-row span.label {
-        color: var(--text-subtle);
-        min-width: 120px;
-      }
-
-      .detail-actions {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 0.75rem;
-      }
-
-      .detail-section {
-        display: flex;
-        flex-direction: column;
-        gap: 0.6rem;
-      }
-
-      .detail-section h3 {
-        margin: 0;
-        font-size: 1rem;
-        font-weight: 600;
-      }
-
-      .config-results {
-        display: grid;
-        gap: 1rem;
-      }
-
-      @media (min-width: 780px) {
-        .config-results {
-          grid-template-columns: repeat(2, minmax(0, 1fr));
-        }
-      }
-
-      .config-card {
-        border-radius: 1rem;
-        border: 1px solid rgba(148, 163, 184, 0.15);
-        background: rgba(15, 23, 42, 0.55);
-        padding: 1rem 1.25rem;
-        display: flex;
-        flex-direction: column;
-        gap: 0.75rem;
-      }
-
-      .config-card__header {
-        display: flex;
-        justify-content: space-between;
-        gap: 0.75rem;
-      }
-
-      .config-card__header h3 {
-        margin: 0;
-        font-size: 1.05rem;
-      }
-
-      .config-card__url {
-        margin: 0;
-        color: var(--text-subtle);
-        font-size: 0.82rem;
-        word-break: break-all;
-      }
-
-      .config-card--error {
-        border-color: rgba(248, 113, 113, 0.35);
-        background: rgba(248, 113, 113, 0.08);
-      }
-
-      ul.bullet-list {
-        margin: 0;
-        padding-left: 1.1rem;
-        color: var(--text-subtle);
-        font-size: 0.85rem;
-      }
-
-      footer {
-        text-align: center;
-        color: var(--text-subtle);
-        font-size: 0.85rem;
-      }
-
-      footer a {
-        color: var(--accent);
-      }
-    </style>
+    <link rel="stylesheet" href="./styles.css" />
   </head>
   <body>
     <div class="app">
-      <header class="app__header">
-        <h1>Personal AI Orchestration Dashboard</h1>
-        <p>
-          Monitor task lifecycles, follow log streams, trigger manual jobs, and verify configuration health for all Render-bound
-          services from a single control surface.
-        </p>
-        <div id="status-banner" class="status-banner" role="status" aria-live="polite">Not connected.</div>
+      <header class="top-bar">
+        <div>
+          <h1>Personal AI Orchestration</h1>
+          <p class="subtitle">Agent task control, activity, and config health</p>
+        </div>
+        <div class="connection" id="connection-status" data-state="disconnected">Disconnected</div>
       </header>
 
-      <section class="panel" id="connection-panel">
-        <div class="panel__header">
-          <h2>Connection</h2>
-        </div>
-        <form id="connection-form" class="form-grid two-column" autocomplete="off">
+      <section class="card settings-card" id="settings-card">
+        <header class="card-header">
+          <h2>Connections</h2>
+          <button type="button" class="ghost" id="toggle-settings">Collapse</button>
+        </header>
+        <form id="settings-form" class="settings-grid">
           <label>
-            <span>Orchestrator URL *</span>
-            <input type="url" id="orchestrator-url" name="orchestratorUrl" required placeholder="http://localhost:4000" />
+            <span>Orchestrator API Base URL</span>
+            <input name="orchestratorUrl" type="url" placeholder="https://orchestrator.example.com" required />
           </label>
           <label>
-            <span>Logging URL</span>
-            <input type="url" id="logging-url" name="loggingUrl" placeholder="http://localhost:4001" />
+            <span>WebSocket URL <small>(optional)</small></span>
+            <input name="websocketUrl" type="url" placeholder="ws://orchestrator/ws" />
           </label>
           <label>
-            <span>Echo agent URL</span>
-            <input type="url" id="echo-url" name="echoUrl" placeholder="http://localhost:4002" />
+            <span>Logging API Base URL <small>(optional)</small></span>
+            <input name="loggingUrl" type="url" placeholder="https://logging.example.com" />
           </label>
           <label>
-            <span>Render control URL</span>
-            <input type="url" id="renderctl-url" name="renderctlUrl" placeholder="http://localhost:4003" />
+            <span>Echo Agent Base URL <small>(config inspector)</small></span>
+            <input name="echoUrl" type="url" placeholder="https://echo-agent.example.com" />
           </label>
           <label>
-            <span>Basic Auth username</span>
-            <input type="text" id="auth-username" name="username" autocomplete="username" placeholder="operator" />
+            <span>Render Control Base URL <small>(config inspector)</small></span>
+            <input name="renderctlUrl" type="url" placeholder="https://renderctl.example.com" />
           </label>
           <label>
-            <span>Basic Auth password</span>
-            <input type="password" id="auth-password" name="password" autocomplete="current-password" />
+            <span>Basic Auth Username</span>
+            <input name="username" type="text" autocomplete="username" />
           </label>
-          <div class="form-actions">
-            <button type="submit" class="button primary" id="connect-button">Connect</button>
-            <button type="button" class="button" id="disconnect-button">Disconnect</button>
-            <button type="button" class="button ghost" id="clear-settings">Clear saved settings</button>
+          <label>
+            <span>Basic Auth Password</span>
+            <input name="password" type="password" autocomplete="current-password" />
+          </label>
+          <div class="settings-actions">
+            <button type="submit" class="primary">Save &amp; Connect</button>
+            <button type="button" id="clear-settings" class="ghost">Clear</button>
           </div>
         </form>
-        <p class="hint">Credentials are kept in-memory only. Base URLs and username are cached in local storage for convenience.</p>
+        <p class="hint">Credentials are stored only in this browser via localStorage for quick reconnects.</p>
       </section>
 
-      <section class="panel" id="task-creator">
-        <div class="panel__header">
-          <h2>Create Task</h2>
+      <section class="grid">
+        <div class="column">
+          <article class="card" id="task-summary-card">
+            <header class="card-header">
+              <h2>Task Summary</h2>
+              <button type="button" class="ghost" id="refresh-tasks">Refresh</button>
+            </header>
+            <dl class="summary" id="task-summary">
+              <div><dt>Total</dt><dd id="summary-total">0</dd></div>
+              <div><dt>Queued</dt><dd id="summary-queued">0</dd></div>
+              <div><dt>Running</dt><dd id="summary-running">0</dd></div>
+              <div><dt>Done</dt><dd id="summary-done">0</dd></div>
+              <div><dt>Error</dt><dd id="summary-error">0</dd></div>
+            </dl>
+          </article>
+
+          <article class="card" id="task-table-card">
+            <header class="card-header">
+              <h2>Tasks</h2>
+            </header>
+            <form id="task-filter-form" class="filters">
+              <label>
+                <span>Status</span>
+                <select name="status">
+                  <option value="">All</option>
+                  <option value="queued">Queued</option>
+                  <option value="running">Running</option>
+                  <option value="done">Done</option>
+                  <option value="error">Error</option>
+                </select>
+              </label>
+              <label>
+                <span>Correlation ID</span>
+                <input name="corrId" type="text" placeholder="optional" />
+              </label>
+              <label>
+                <span>Limit</span>
+                <input name="limit" type="number" min="1" max="200" value="50" />
+              </label>
+              <button type="submit" class="primary">Apply</button>
+            </form>
+            <div class="table-wrapper">
+              <table>
+                <thead>
+                  <tr>
+                    <th>ID</th>
+                    <th>Type</th>
+                    <th>Status</th>
+                    <th>Updated</th>
+                    <th>Correlation</th>
+                  </tr>
+                </thead>
+                <tbody id="task-table-body">
+                  <tr class="empty"><td colspan="5">Connect to view tasks.</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </article>
+
+          <article class="card" id="task-detail-card">
+            <header class="card-header">
+              <h2>Task Detail</h2>
+            </header>
+            <div id="task-detail" class="task-detail empty">Select a task to inspect payload, result, and events.</div>
+          </article>
+
+          <article class="card" id="new-task-card">
+            <header class="card-header">
+              <h2>New Task</h2>
+            </header>
+            <form id="new-task-form" class="new-task-form">
+              <label>
+                <span>Type</span>
+                <input name="type" type="text" value="echo" required />
+              </label>
+              <label>
+                <span>Source</span>
+                <input name="source" type="text" value="dashboard" required />
+              </label>
+              <label>
+                <span>Correlation ID</span>
+                <input name="corrId" type="text" placeholder="optional" />
+              </label>
+              <label class="full">
+                <span>Payload (JSON)</span>
+                <textarea name="payload" rows="6" placeholder='{"message":"hello"}'></textarea>
+              </label>
+              <button type="submit" class="primary">Queue Task</button>
+              <p class="form-feedback" id="new-task-feedback"></p>
+            </form>
+          </article>
         </div>
-        <form id="task-form" class="form-grid two-column">
-          <label>
-            <span>Task type</span>
-            <input type="text" id="task-type" name="type" value="echo" required />
-          </label>
-          <label>
-            <span>Source</span>
-            <input type="text" id="task-source" name="source" value="dashboard" required />
-          </label>
-          <label>
-            <span>Correlation ID</span>
-            <input type="text" id="task-correlation" name="correlationId" placeholder="optional" />
-          </label>
-          <label class="textarea">
-            <span>Payload (JSON)</span>
-            <textarea id="task-payload" name="payload"></textarea>
-          </label>
-          <div class="form-actions">
-            <button type="submit" class="button primary">Enqueue task</button>
-            <button type="button" class="button ghost" id="reset-payload">Reset payload</button>
-          </div>
-        </form>
-        <div id="task-feedback" class="feedback" role="status" aria-live="polite"></div>
+
+        <div class="column">
+          <article class="card" id="activity-card">
+            <header class="card-header">
+              <h2>Activity Stream</h2>
+            </header>
+            <ul class="activity" id="activity-list">
+              <li class="empty">Waiting for connection…</li>
+            </ul>
+          </article>
+
+          <article class="card" id="config-card">
+            <header class="card-header">
+              <h2>Config Inspector</h2>
+              <button type="button" class="ghost" id="refresh-config">Refresh</button>
+            </header>
+            <div id="config-results" class="config-results">
+              Provide service URLs above to run config validation.
+            </div>
+          </article>
+        </div>
       </section>
-
-      <section class="panel" id="tasks-panel">
-        <div class="panel__header">
-          <h2>Recent Tasks</h2>
-          <div class="panel__controls">
-            <label>
-              <span>Status</span>
-              <select id="task-filter" name="taskFilter">
-                <option value="all">All</option>
-                <option value="queued">Queued</option>
-                <option value="running">Running</option>
-                <option value="done">Done</option>
-                <option value="error">Error</option>
-              </select>
-            </label>
-            <button type="button" class="button" id="refresh-tasks">Refresh</button>
-          </div>
-        </div>
-        <div class="table-wrapper">
-          <table id="tasks-table">
-            <thead>
-              <tr>
-                <th>ID</th>
-                <th>Status</th>
-                <th>Type</th>
-                <th>Source</th>
-                <th>Updated</th>
-                <th>Version</th>
-                <th></th>
-              </tr>
-            </thead>
-            <tbody id="tasks-tbody">
-              <tr class="empty">
-                <td colspan="7">No tasks yet. Create one above to get started.</td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
-      </section>
-
-      <section class="panel" id="task-detail-panel">
-        <div class="panel__header">
-          <h2>Task detail</h2>
-          <div class="panel__controls">
-            <button type="button" class="button" id="refresh-detail">Refresh detail</button>
-          </div>
-        </div>
-        <div id="task-detail" class="detail-body">
-          <p class="hint">Select a task from the table to inspect payloads, results, and event history.</p>
-        </div>
-      </section>
-
-      <div class="panel-grid two-column">
-        <section class="panel" id="activity-panel">
-          <div class="panel__header">
-            <h2>Activity stream</h2>
-          </div>
-          <ul id="activity-list" class="timeline">
-            <li class="timeline__item timeline__item--empty">No activity yet.</li>
-          </ul>
-        </section>
-
-        <section class="panel" id="logs-panel">
-          <div class="panel__header">
-            <h2>Latest logs</h2>
-          </div>
-          <ul id="logs-list" class="timeline">
-            <li class="timeline__item timeline__item--empty">No logs yet.</li>
-          </ul>
-        </section>
-      </div>
-
-      <section class="panel" id="config-panel">
-        <div class="panel__header">
-          <h2>Configuration health</h2>
-          <div class="panel__controls">
-            <button type="button" class="button" id="refresh-config">Run validation</button>
-          </div>
-        </div>
-        <div id="config-results" class="config-results">
-          <p class="hint">Provide base URLs above and run validation to inspect each service's configuration status.</p>
-        </div>
-      </section>
-
-      <footer>
-        Built for Render-native agent orchestration. Review the <a href="../docs/product-requirements.md">product requirements</a>
-        for the complete roadmap.
-      </footer>
     </div>
+
+    <template id="activity-item-template">
+      <li class="activity-item">
+        <div class="activity-meta">
+          <span class="activity-type"></span>
+          <time></time>
+        </div>
+        <div class="activity-summary"></div>
+        <pre class="activity-detail"></pre>
+      </li>
+    </template>
 
     <script type="module" src="./app.js"></script>
   </body>

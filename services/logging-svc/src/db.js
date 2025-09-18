@@ -36,10 +36,25 @@ async function initDb() {
       )
     `);
 
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS task_events (
+        id UUID PRIMARY KEY,
+        ts_utc TIMESTAMPTZ NOT NULL DEFAULT now(),
+        task_id UUID NOT NULL,
+        actor TEXT NOT NULL,
+        kind TEXT NOT NULL,
+        data JSONB,
+        correlation_id TEXT,
+        trace_id TEXT
+      )
+    `);
+
     await client.query('CREATE INDEX IF NOT EXISTS idx_logs_ts ON logs(ts_utc DESC)');
     await client.query('CREATE INDEX IF NOT EXISTS idx_logs_service ON logs(service)');
     await client.query('CREATE INDEX IF NOT EXISTS idx_logs_corr ON logs(correlation_id)');
     await client.query('CREATE INDEX IF NOT EXISTS idx_logs_trace ON logs(trace_id)');
+    await client.query('CREATE INDEX IF NOT EXISTS idx_task_events_task_ts ON task_events(task_id, ts_utc DESC)');
+    await client.query('CREATE INDEX IF NOT EXISTS idx_task_events_trace ON task_events(trace_id)');
 
     await client.query('COMMIT');
   } catch (err) {
@@ -70,7 +85,7 @@ async function insertLog(entry) {
       service,
       level,
       message,
-      data ? JSON.stringify(data) : null,
+      data === undefined || data === null ? null : JSON.stringify(data),
       taskId || null,
       correlationId || null,
       traceId || null
@@ -121,9 +136,78 @@ async function queryLogs(filters) {
   return rows;
 }
 
+async function queryTaskEvents(filters = {}) {
+  const clauses = [];
+  const values = [];
+
+  if (filters.taskId) {
+    values.push(filters.taskId);
+    clauses.push(`task_id = $${values.length}`);
+  }
+  if (filters.traceId) {
+    values.push(filters.traceId);
+    clauses.push(`trace_id = $${values.length}`);
+  }
+  if (filters.correlationId) {
+    values.push(filters.correlationId);
+    clauses.push(`correlation_id = $${values.length}`);
+  }
+  if (filters.actor) {
+    values.push(filters.actor);
+    clauses.push(`actor = $${values.length}`);
+  }
+  if (filters.kind) {
+    values.push(filters.kind);
+    clauses.push(`kind = $${values.length}`);
+  }
+  if (filters.since) {
+    values.push(filters.since);
+    clauses.push(`ts_utc >= $${values.length}`);
+  }
+
+  const where = clauses.length ? `WHERE ${clauses.join(' AND ')}` : '';
+  const limit = filters.limit || 200;
+  values.push(limit);
+
+  const { rows } = await pool.query(
+    `SELECT * FROM task_events ${where} ORDER BY ts_utc DESC LIMIT $${values.length}`,
+    values
+  );
+
+  return rows;
+}
+
+async function insertTaskEvent({
+  taskId,
+  actor,
+  kind,
+  data,
+  correlationId,
+  traceId
+}) {
+  const { rows } = await pool.query(
+    `INSERT INTO task_events (id, task_id, actor, kind, data, correlation_id, trace_id)
+     VALUES ($1, $2, $3, $4, $5::jsonb, $6, $7)
+     RETURNING *`,
+    [
+      uuidv4(),
+      taskId,
+      actor,
+      kind,
+      data === undefined || data === null ? null : JSON.stringify(data),
+      correlationId || null,
+      traceId || null
+    ]
+  );
+
+  return rows[0];
+}
+
 module.exports = {
   pool,
   initDb,
   insertLog,
-  queryLogs
+  queryLogs,
+  queryTaskEvents,
+  insertTaskEvent
 };

@@ -11,7 +11,8 @@ const {
 const {
   pool,
   initDb,
-  queryLogs
+  queryLogs,
+  queryTaskEvents
 } = require('./db');
 const { registerStream } = require('./stream');
 const { recordLog, recordTaskEvent } = require('./events');
@@ -83,7 +84,7 @@ async function createService() {
       const logs = await queryLogs({
         service: req.query.service,
         level: req.query.level,
-        correlationId: req.query.corrId,
+        correlationId: req.query.corrId || req.query.correlationId,
         traceId: req.query.traceId,
         taskId: req.query.taskId,
         since: req.query.since ? new Date(req.query.since).toISOString() : undefined,
@@ -112,6 +113,37 @@ async function createService() {
     } catch (err) {
       console.error('Failed to record task event', err);
       res.status(500).json({ error: 'Failed to record task event' });
+    }
+  });
+
+  app.get('/task/events', async (req, res) => {
+    if (req.query.since && Number.isNaN(Date.parse(req.query.since))) {
+      return res.status(400).json({ error: 'Invalid since parameter' });
+    }
+
+    let limit;
+    if (req.query.limit !== undefined) {
+      limit = Number(req.query.limit);
+      if (!Number.isFinite(limit) || limit <= 0 || limit > 500) {
+        return res.status(400).json({ error: 'Invalid limit parameter' });
+      }
+    }
+
+    try {
+      const events = await queryTaskEvents({
+        taskId: req.query.taskId,
+        traceId: req.query.traceId,
+        correlationId: req.query.corrId || req.query.correlationId,
+        actor: req.query.actor,
+        kind: req.query.kind,
+        since: req.query.since ? new Date(req.query.since).toISOString() : undefined,
+        limit
+      });
+
+      res.json({ events });
+    } catch (err) {
+      console.error('Failed to fetch task events', err);
+      res.status(500).json({ error: 'Failed to fetch task events' });
     }
   });
 

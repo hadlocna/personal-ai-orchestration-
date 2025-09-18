@@ -37,6 +37,7 @@ Refer to the documentation above for detailed requirement breakdowns, user stori
 - Background monitoring can be enabled via `RENDER_MONITOR_SERVICES` (comma-separated names or `id:<serviceId>`). When a monitored static site build fails with missing publish directory or build command, renderctl patches the service to use `rootDir`=`.` / `buildCommand`=`./render-build.sh` / `publishPath`=`dashboard-web/dist` and reruns the deploy. Tune via `RENDER_STATIC_SITE_*` env vars.
 - `POST /render/blueprint/apply` reads `infra/render.blueprint.yaml` (or a supplied `blueprintPath`) and updates each listed service's `serviceDetails` and env vars. Pass `{ "dryRun": true }` to preview changes without touching Render.
 - `GET /task/events` on logging-svc surfaces the persisted event timeline for any task (filter by `taskId`, `corrId`, `traceId`, `actor`, or `kind`).
+- Operator CLI helpers: `node scripts/render-status.js` summarizes service deploy state, and `node scripts/renderctl-ops.js` exposes `list`, `deploy`, `env`, and `blueprint` commands against renderctl-svc.
 
 ## CLI Utilities
 - `npm run config:doctor` — print config validation status for the current environment.

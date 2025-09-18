@@ -47,6 +47,7 @@ This guide walks operators and developers through a repeatable manual regression
 2. Trigger a deploy with `POST /render/deploy/<serviceId>` on a non-critical service; watch Render dashboard for the manual deploy event.
 3. Blueprint dry run: `POST /render/blueprint/apply` with `{ "dryRun": true }` and verify the diff output matches expectations without applying changes.
 4. (Optional) Validate the static-site auto-remediation: intentionally break `dashboard-web` build settings on Render, wait for monitor to patch and redeploy, then revert.
+5. Operator CLI sanity: run `node scripts/render-status.js --json` and `node scripts/renderctl-ops.js list` (with `RENDERCTL_URL` + auth envs exported) to confirm renderctl responds end-to-end.
 
 ## 8. Smoke Script (Optional)
 - Execute `npm run test:smoke` with environment variables `ORCHESTRATOR_URL`, `LOGGING_URL`, `BASIC_AUTH_USER`, and `BASIC_AUTH_PASS`. Expect the script to queue an echo task, await completion, and exit with code 0.

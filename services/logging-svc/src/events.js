@@ -1,8 +1,6 @@
-const { v4: uuidv4 } = require('uuid');
-const dayjs = require('dayjs');
-
 const {
-  insertLog
+  insertLog,
+  insertTaskEvent
 } = require('./db');
 const { broadcastLog, broadcastEvent } = require('./stream');
 
@@ -13,16 +11,26 @@ async function recordLog(payload) {
 }
 
 async function recordTaskEvent({ taskId, actor, kind, data, correlationId, traceId }) {
-  const event = {
-    id: uuidv4(),
+  const persisted = await insertTaskEvent({
     taskId,
     actor,
     kind,
-    data: data || null,
-    correlationId: correlationId || null,
-    traceId: traceId || null,
-    ts: dayjs().toISOString()
+    data,
+    correlationId,
+    traceId
+  });
+
+  const event = {
+    id: persisted.id,
+    taskId: persisted.task_id,
+    actor: persisted.actor,
+    kind: persisted.kind,
+    data: persisted.data ?? null,
+    correlationId: persisted.correlation_id ?? null,
+    traceId: persisted.trace_id ?? null,
+    ts: persisted.ts_utc
   };
+
   broadcastEvent(event);
   return event;
 }

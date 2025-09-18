@@ -1,4 +1,2 @@
-module.exports = {
-  ...require('./client'),
-  ...require('./contracts')
-};
+export * from './client.js';
+export * from './contracts.js';

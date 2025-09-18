@@ -11,10 +11,10 @@ function createServiceLogger({ service, loggingUrl, broadcast }) {
       service,
       level,
       message,
-      data: metadata.data || null,
-      taskId: metadata.taskId || null,
-      correlationId: metadata.correlationId || null,
-      traceId: metadata.traceId || null
+      data: metadata.data ?? null,
+      taskId: metadata.taskId ?? null,
+      correlationId: metadata.correlationId ?? null,
+      traceId: metadata.traceId ?? null
     };
 
     queueMicrotask(async () => {
@@ -44,9 +44,9 @@ function createServiceLogger({ service, loggingUrl, broadcast }) {
       taskId: event.taskId,
       actor: event.actor,
       kind: event.kind,
-      data: event.data || null,
-      correlationId: event.correlationId || null,
-      traceId: event.traceId || null
+      data: event.data ?? null,
+      correlationId: event.correlationId ?? null,
+      traceId: event.traceId ?? null
     };
 
     queueMicrotask(async () => {

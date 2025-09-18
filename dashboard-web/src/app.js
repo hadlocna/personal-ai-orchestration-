@@ -1,985 +1,812 @@
-const state = {
-  connection: {
-    orchestratorUrl: '',
-    loggingUrl: '',
-    echoUrl: '',
-    renderctlUrl: ''
+import { createApiClient, encodeBasicAuth } from './api/client.js';
+
+const STORAGE_KEY = 'paio-dashboard-settings';
+const MAX_ACTIVITY_ENTRIES = 200;
+
+const elements = {
+  connectionStatus: document.getElementById('connection-status'),
+  toggleSettings: document.getElementById('toggle-settings'),
+  settingsCard: document.getElementById('settings-card'),
+  settingsForm: document.getElementById('settings-form'),
+  clearSettings: document.getElementById('clear-settings'),
+  refreshTasks: document.getElementById('refresh-tasks'),
+  refreshConfig: document.getElementById('refresh-config'),
+  summary: {
+    total: document.getElementById('summary-total'),
+    queued: document.getElementById('summary-queued'),
+    running: document.getElementById('summary-running'),
+    done: document.getElementById('summary-done'),
+    error: document.getElementById('summary-error')
   },
-  auth: {
-    username: '',
-    password: ''
-  },
-  authHeader: null,
-  tasks: new Map(),
-  taskDetails: new Map(),
-  taskEvents: new Map(),
-  selectedTaskId: null,
-  activity: [],
-  logs: [],
-  configReports: [],
-  tasksFilter: 'all',
-  ws: null,
-  isConnected: false
+  filterForm: document.getElementById('task-filter-form'),
+  taskTableBody: document.getElementById('task-table-body'),
+  taskDetail: document.getElementById('task-detail'),
+  newTaskForm: document.getElementById('new-task-form'),
+  newTaskFeedback: document.getElementById('new-task-feedback'),
+  activityList: document.getElementById('activity-list'),
+  activityTemplate: document.getElementById('activity-item-template'),
+  configResults: document.getElementById('config-results')
 };
 
-const elements = {};
+const state = {
+  tasks: new Map(),
+  filters: { status: '', corrId: '', limit: 50 },
+  selectedTaskId: null,
+  selectedTaskDetail: null,
+  events: [],
+  configReports: []
+};
 
-const STORAGE_KEY = 'pao-dashboard-settings';
-const MAX_ACTIVITY = 80;
-const MAX_LOGS = 80;
-const MAX_EVENTS = 80;
+let settings = loadSettings();
+let orchestratorClient = null;
+let loggingClient = null;
+let websocket = null;
+let reconnectTimer = null;
 
-document.addEventListener('DOMContentLoaded', init);
+applySettingsToForm(settings);
+renderTaskTable();
+renderActivity();
+renderTaskDetail();
+renderConfigReports();
+renderSummary();
 
-function init() {
-  cacheElements();
-  bindEvents();
-  loadSettings();
-  setDefaultPayload();
-  renderTasks();
-  renderTaskDetail();
-  renderActivity();
-  renderLogs();
-  renderConfig();
+if (settings.orchestratorUrl) {
+  initializeConnections();
 }
 
-function cacheElements() {
-  elements.statusBanner = document.getElementById('status-banner');
-  elements.connectionForm = document.getElementById('connection-form');
-  elements.connectButton = document.getElementById('connect-button');
-  elements.disconnectButton = document.getElementById('disconnect-button');
-  elements.clearSettingsButton = document.getElementById('clear-settings');
-  elements.orchestratorInput = document.getElementById('orchestrator-url');
-  elements.loggingInput = document.getElementById('logging-url');
-  elements.echoInput = document.getElementById('echo-url');
-  elements.renderctlInput = document.getElementById('renderctl-url');
-  elements.usernameInput = document.getElementById('auth-username');
-  elements.passwordInput = document.getElementById('auth-password');
-  elements.taskForm = document.getElementById('task-form');
-  elements.taskTypeInput = document.getElementById('task-type');
-  elements.taskSourceInput = document.getElementById('task-source');
-  elements.taskCorrelationInput = document.getElementById('task-correlation');
-  elements.taskPayloadInput = document.getElementById('task-payload');
-  elements.taskFeedback = document.getElementById('task-feedback');
-  elements.resetPayloadButton = document.getElementById('reset-payload');
-  elements.taskFilter = document.getElementById('task-filter');
-  elements.refreshTasksButton = document.getElementById('refresh-tasks');
-  elements.tasksTableBody = document.getElementById('tasks-tbody');
-  elements.refreshDetailButton = document.getElementById('refresh-detail');
-  elements.taskDetail = document.getElementById('task-detail');
-  elements.activityList = document.getElementById('activity-list');
-  elements.logsList = document.getElementById('logs-list');
-  elements.refreshConfigButton = document.getElementById('refresh-config');
-  elements.configResults = document.getElementById('config-results');
-}
+elements.toggleSettings?.addEventListener('click', toggleSettingsCard);
+elements.clearSettings?.addEventListener('click', clearStoredSettings);
+elements.settingsForm?.addEventListener('submit', onSettingsSubmit);
+elements.refreshTasks?.addEventListener('click', () => {
+  refreshTasks();
+});
+elements.refreshConfig?.addEventListener('click', () => {
+  refreshConfig();
+});
+elements.filterForm?.addEventListener('submit', onFilterSubmit);
+elements.taskTableBody?.addEventListener('click', onTaskRowClick);
+elements.newTaskForm?.addEventListener('submit', onNewTaskSubmit);
 
-function bindEvents() {
-  elements.connectionForm?.addEventListener('submit', handleConnect);
-  elements.disconnectButton?.addEventListener('click', handleDisconnect);
-  elements.clearSettingsButton?.addEventListener('click', handleClearSettings);
-  elements.taskForm?.addEventListener('submit', handleCreateTask);
-  elements.resetPayloadButton?.addEventListener('click', (event) => {
-    event.preventDefault();
-    setDefaultPayload();
-  });
-  elements.taskFilter?.addEventListener('change', (event) => {
-    state.tasksFilter = event.target.value;
-    renderTasks();
-  });
-  elements.refreshTasksButton?.addEventListener('click', () => {
-    refreshTasks();
-  });
-  elements.tasksTableBody?.addEventListener('click', handleTaskTableClick);
-  elements.refreshDetailButton?.addEventListener('click', () => {
-    if (state.selectedTaskId) {
-      fetchTaskDetail(state.selectedTaskId, { showStatus: true });
-    }
-  });
-  elements.taskDetail?.addEventListener('click', handleTaskDetailClick);
-  elements.refreshConfigButton?.addEventListener('click', () => {
-    refreshConfig();
-  });
-  window.addEventListener('beforeunload', () => {
-    closeWebsocket();
-  });
-}
-
-function loadSettings() {
-  let stored = null;
-  try {
-    stored = window.localStorage?.getItem(STORAGE_KEY) || null;
-  } catch (err) {
-    console.warn('Failed to read stored settings', err);
-  }
-  if (stored) {
-    try {
-      const parsed = JSON.parse(stored);
-      if (parsed.connection) {
-        Object.assign(state.connection, parsed.connection);
-      }
-      if (parsed.username) {
-        state.auth.username = parsed.username;
-      }
-    } catch (err) {
-      console.warn('Stored settings were not valid JSON', err);
-    }
-  }
-  applySettingsToForm();
-}
-
-function applySettingsToForm() {
-  if (elements.orchestratorInput) {
-    elements.orchestratorInput.value = state.connection.orchestratorUrl || 'http://localhost:4000';
-  }
-  if (elements.loggingInput) {
-    elements.loggingInput.value = state.connection.loggingUrl || '';
-  }
-  if (elements.echoInput) {
-    elements.echoInput.value = state.connection.echoUrl || '';
-  }
-  if (elements.renderctlInput) {
-    elements.renderctlInput.value = state.connection.renderctlUrl || '';
-  }
-  if (elements.usernameInput) {
-    elements.usernameInput.value = state.auth.username || '';
-  }
-  if (elements.passwordInput) {
-    elements.passwordInput.value = '';
-  }
-}
-
-function saveSettings() {
-  try {
-    window.localStorage?.setItem(
-      STORAGE_KEY,
-      JSON.stringify({
-        connection: state.connection,
-        username: state.auth.username || ''
-      })
-    );
-  } catch (err) {
-    console.warn('Failed to persist settings', err);
-  }
-}
-
-function handleClearSettings(event) {
+function onSettingsSubmit(event) {
   event.preventDefault();
-  try {
-    window.localStorage?.removeItem(STORAGE_KEY);
-  } catch (err) {
-    console.warn('Failed to clear stored settings', err);
-  }
-  state.connection = {
-    orchestratorUrl: '',
-    loggingUrl: '',
-    echoUrl: '',
-    renderctlUrl: ''
+  const formData = new FormData(elements.settingsForm);
+  settings = {
+    orchestratorUrl: formData.get('orchestratorUrl')?.trim() || '',
+    websocketUrl: formData.get('websocketUrl')?.trim() || '',
+    loggingUrl: formData.get('loggingUrl')?.trim() || '',
+    echoUrl: formData.get('echoUrl')?.trim() || '',
+    renderctlUrl: formData.get('renderctlUrl')?.trim() || '',
+    username: formData.get('username')?.trim() || '',
+    password: formData.get('password') || ''
   };
-  state.auth.username = '';
-  state.auth.password = '';
-  state.authHeader = null;
-  applySettingsToForm();
-  setDefaultPayload();
-  setStatus('Saved settings cleared. Update the connection details to reconnect.', 'pending');
-  addActivity({ label: 'Cleared saved connection settings', level: 'info' });
+
+  if (!settings.orchestratorUrl) {
+    alert('Orchestrator base URL is required to connect.');
+    return;
+  }
+
+  saveSettings(settings);
+  initializeConnections();
 }
 
-function setDefaultPayload() {
-  if (!elements.taskPayloadInput) return;
-  const example = {
-    message: 'Hello from the dashboard',
-    ts: new Date().toISOString()
+function onFilterSubmit(event) {
+  event.preventDefault();
+  const formData = new FormData(elements.filterForm);
+  state.filters = {
+    status: formData.get('status') || '',
+    corrId: formData.get('corrId')?.trim() || '',
+    limit: clampLimit(Number(formData.get('limit'))) || 50
   };
-  elements.taskPayloadInput.value = JSON.stringify(example, null, 2);
+  refreshTasks();
 }
 
-async function handleConnect(event) {
+function onTaskRowClick(event) {
+  const row = event.target.closest('tr[data-task-id]');
+  if (!row) return;
+  const taskId = row.dataset.taskId;
+  if (!taskId) return;
+  state.selectedTaskId = taskId;
+  highlightSelectedRow(taskId);
+  loadTaskDetail(taskId);
+}
+
+async function onNewTaskSubmit(event) {
   event.preventDefault();
-  if (!elements.connectionForm) return;
-  const formData = new FormData(elements.connectionForm);
-  const orchestratorUrl = (formData.get('orchestratorUrl') || '').trim();
-
-  if (!orchestratorUrl) {
-    setStatus('Orchestrator URL is required to connect.', 'error');
+  if (!orchestratorClient) {
+    setTaskFeedback('Connect to the orchestrator to create tasks.', 'error');
     return;
   }
 
-  state.connection.orchestratorUrl = orchestratorUrl;
-  state.connection.loggingUrl = (formData.get('loggingUrl') || '').trim();
-  state.connection.echoUrl = (formData.get('echoUrl') || '').trim();
-  state.connection.renderctlUrl = (formData.get('renderctlUrl') || '').trim();
-  state.auth.username = (formData.get('username') || '').trim();
-  state.auth.password = formData.get('password') || '';
-  state.authHeader = state.auth.username && state.auth.password ? encodeBasicAuth(state.auth.username, state.auth.password) : null;
+  const formData = new FormData(elements.newTaskForm);
+  const type = formData.get('type')?.trim();
+  const source = formData.get('source')?.trim();
+  const corrId = formData.get('corrId')?.trim() || undefined;
+  const rawPayload = formData.get('payload')?.trim();
 
-  saveSettings();
-  disableConnectionInputs(true);
-  setStatus('Connecting to orchestrator…', 'pending');
-  addActivity({ label: 'Attempting connection to orchestrator', level: 'info' });
-
-  try {
-    await checkOrchestratorHealth();
-    state.isConnected = true;
-    setStatus(`Connected to ${state.connection.orchestratorUrl}`, 'ok');
-    addActivity({ label: 'Connected to orchestrator', level: 'success' });
-    await Promise.allSettled([refreshTasks(), refreshConfig(), loadRecentLogs()]);
-    startWebsocket();
-  } catch (err) {
-    console.error('Connection failed', err);
-    state.isConnected = false;
-    setStatus(`Connection failed: ${err.message}`, 'error');
-    addActivity({ label: 'Connection failed', level: 'error', context: err.message });
-  } finally {
-    disableConnectionInputs(false);
-  }
-}
-
-function handleDisconnect(event) {
-  event?.preventDefault();
-  if (!state.isConnected && !state.ws) {
-    return;
-  }
-  disconnect();
-  setStatus('Disconnected.', 'pending');
-  addActivity({ label: 'Disconnected from orchestrator', level: 'warn' });
-}
-
-async function handleCreateTask(event) {
-  event.preventDefault();
-  if (!state.connection.orchestratorUrl) {
-    setTaskFeedback('Connect to the orchestrator first.', 'error');
-    return;
-  }
-  if (!elements.taskForm) return;
-
-  const formData = new FormData(elements.taskForm);
-  const type = (formData.get('type') || '').trim();
-  const source = (formData.get('source') || '').trim();
-  const correlationId = (formData.get('correlationId') || '').trim();
-  const payloadText = formData.get('payload') || '';
-
-  if (!type) {
-    setTaskFeedback('Task type is required.', 'error');
-    return;
-  }
-  if (!source) {
-    setTaskFeedback('Source is required.', 'error');
+  if (!type || !source) {
+    setTaskFeedback('Type and source are required.', 'error');
     return;
   }
 
-  let payload = {};
-  if (payloadText.trim()) {
+  let payload;
+  if (rawPayload) {
     try {
-      payload = JSON.parse(payloadText);
+      payload = JSON.parse(rawPayload);
     } catch (err) {
-      setTaskFeedback(`Payload must be valid JSON: ${err.message}`, 'error');
+      setTaskFeedback('Payload must be valid JSON.', 'error');
       return;
     }
   }
 
   try {
-    const result = await apiRequest(state.connection.orchestratorUrl, '/task', {
-      method: 'POST',
-      body: {
-        type,
-        source,
-        payload,
-        correlationId: correlationId || undefined
-      }
+    const result = await orchestratorClient.createTask({
+      type,
+      source,
+      correlationId: corrId,
+      payload: payload ?? {}
     });
-    const taskId = result?.id;
-    setTaskFeedback(`Task ${taskId ? shortId(taskId) : ''} enqueued.`, 'success');
-    addActivity({ label: `Created task ${taskId ? shortId(taskId) : ''}`, level: 'success', context: { type, source } });
-    await refreshTasks({ silent: true });
+    setTaskFeedback(`Task ${result?.id || ''} queued successfully.`, 'success');
+    elements.newTaskForm.reset();
+    refreshTasks();
   } catch (err) {
     console.error('Failed to create task', err);
-    setTaskFeedback(`Failed to create task: ${err.message}`, 'error');
-    addActivity({ label: 'Task creation failed', level: 'error', context: err.message });
+    setTaskFeedback(err.message || 'Failed to queue task.', 'error');
   }
 }
 
-
-function handleTaskTableClick(event) {
-  const target = event.target.closest('[data-action]');
-  if (!target) return;
-  const taskId = target.getAttribute('data-task-id');
-  if (!taskId) return;
-  if (target.dataset.action === 'view-task') {
-    selectTask(taskId);
+function loadSettings() {
+  if (typeof localStorage === 'undefined') {
+    return {
+      orchestratorUrl: '',
+      websocketUrl: '',
+      loggingUrl: '',
+      echoUrl: '',
+      renderctlUrl: '',
+      username: '',
+      password: ''
+    };
   }
-}
 
-function handleTaskDetailClick(event) {
-  const target = event.target.closest('[data-action]');
-  if (!target) return;
-  const taskId = target.getAttribute('data-task-id');
-  if (!taskId) return;
-  if (target.dataset.action === 'refresh-detail') {
-    fetchTaskDetail(taskId, { showStatus: true });
-  }
-}
-
-function selectTask(taskId) {
-  state.selectedTaskId = taskId;
-  renderTasks();
-  if (elements.taskDetail) {
-    elements.taskDetail.innerHTML = '<p class="hint">Loading task detail…</p>';
-  }
-  fetchTaskDetail(taskId);
-}
-
-function disconnect() {
-  state.isConnected = false;
-  closeWebsocket();
-  state.tasks.clear();
-  state.taskDetails.clear();
-  state.taskEvents.clear();
-  state.selectedTaskId = null;
-  renderTasks();
-  renderTaskDetail();
-}
-
-function disableConnectionInputs(disabled) {
-  const controls = [
-    elements.connectButton,
-    elements.disconnectButton,
-    elements.clearSettingsButton,
-    elements.orchestratorInput,
-    elements.loggingInput,
-    elements.echoInput,
-    elements.renderctlInput,
-    elements.usernameInput,
-    elements.passwordInput
-  ];
-  controls.forEach((el) => {
-    if (el) {
-      el.disabled = disabled;
-    }
-  });
-}
-
-function encodeBasicAuth(username, password) {
-  if (typeof btoa === 'function') {
-    return `Basic ${btoa(`${username}:${password}`)}`;
-  }
-  return null;
-}
-
-async function checkOrchestratorHealth() {
-  const response = await apiRequest(state.connection.orchestratorUrl, '/health');
-  if (!response || response.status !== 'ok') {
-    throw new Error('Health check failed');
-  }
-}
-
-async function refreshTasks(options = {}) {
-  if (!state.connection.orchestratorUrl) return;
   try {
-    const result = await apiRequest(state.connection.orchestratorUrl, '/tasks?limit=50');
-    const tasks = Array.isArray(result?.tasks) ? result.tasks : [];
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (!raw) {
+      return {
+        orchestratorUrl: '',
+        websocketUrl: '',
+        loggingUrl: '',
+        echoUrl: '',
+        renderctlUrl: '',
+        username: '',
+        password: ''
+      };
+    }
+    const parsed = JSON.parse(raw);
+    return {
+      orchestratorUrl: parsed.orchestratorUrl || '',
+      websocketUrl: parsed.websocketUrl || '',
+      loggingUrl: parsed.loggingUrl || '',
+      echoUrl: parsed.echoUrl || '',
+      renderctlUrl: parsed.renderctlUrl || '',
+      username: parsed.username || '',
+      password: parsed.password || ''
+    };
+  } catch (err) {
+    console.warn('Failed to load stored settings', err);
+    return {
+      orchestratorUrl: '',
+      websocketUrl: '',
+      loggingUrl: '',
+      echoUrl: '',
+      renderctlUrl: '',
+      username: '',
+      password: ''
+    };
+  }
+}
+
+function saveSettings(next) {
+  if (typeof localStorage === 'undefined') return;
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
+  } catch (err) {
+    console.warn('Failed to persist settings', err);
+  }
+}
+
+function clearStoredSettings() {
+  if (typeof localStorage !== 'undefined') {
+    localStorage.removeItem(STORAGE_KEY);
+  }
+  settings = {
+    orchestratorUrl: '',
+    websocketUrl: '',
+    loggingUrl: '',
+    echoUrl: '',
+    renderctlUrl: '',
+    username: '',
+    password: ''
+  };
+  applySettingsToForm(settings);
+  disconnectWebsocket();
+  orchestratorClient = null;
+  loggingClient = null;
+  state.tasks.clear();
+  state.events = [];
+  state.selectedTaskDetail = null;
+  state.selectedTaskId = null;
+  renderSummary();
+  renderTaskTable();
+  renderTaskDetail();
+  renderActivity();
+  renderConfigReports();
+  setConnectionStatus('disconnected', 'Disconnected');
+}
+
+function applySettingsToForm(config) {
+  const form = elements.settingsForm;
+  if (!form) return;
+  form.elements.orchestratorUrl.value = config.orchestratorUrl || '';
+  form.elements.websocketUrl.value = config.websocketUrl || '';
+  form.elements.loggingUrl.value = config.loggingUrl || '';
+  form.elements.echoUrl.value = config.echoUrl || '';
+  form.elements.renderctlUrl.value = config.renderctlUrl || '';
+  form.elements.username.value = config.username || '';
+  form.elements.password.value = config.password || '';
+}
+
+async function initializeConnections() {
+  disconnectWebsocket();
+
+  try {
+    orchestratorClient = createApiClient({
+      baseUrl: settings.orchestratorUrl,
+      username: settings.username,
+      password: settings.password
+    });
+  } catch (err) {
+    console.error('Failed to create orchestrator client', err);
+    setConnectionStatus('error', 'Invalid orchestrator URL');
+    return;
+  }
+
+  try {
+    loggingClient = settings.loggingUrl
+      ? createApiClient({
+          baseUrl: settings.loggingUrl,
+          username: settings.username,
+          password: settings.password
+        })
+      : null;
+  } catch (err) {
+    console.warn('Failed to create logging client', err);
+    loggingClient = null;
+  }
+
+  setConnectionStatus('connecting', 'Connecting…');
+
+  await Promise.allSettled([refreshTasks(), refreshActivity(), refreshConfig()]);
+  connectWebsocket();
+}
+
+async function refreshTasks() {
+  if (!orchestratorClient) return;
+  try {
+    const { status, corrId, limit } = state.filters;
+    const response = await orchestratorClient.listTasks({
+      status: status || undefined,
+      corrId: corrId || undefined,
+      limit: limit || undefined
+    });
+    const tasks = Array.isArray(response?.tasks) ? response.tasks : [];
     state.tasks.clear();
     tasks.forEach((task) => {
-      if (task?.id) {
-        state.tasks.set(task.id, task);
-      }
+      state.tasks.set(task.id, task);
     });
-    renderTasks();
-    if (state.selectedTaskId) {
-      renderTaskDetail(state.selectedTaskId);
-    }
+    renderSummary();
+    renderTaskTable();
   } catch (err) {
-    if (!options.silent) {
-      setStatus(`Failed to fetch tasks: ${err.message}`, 'error');
-      addActivity({ label: 'Failed to fetch tasks', level: 'error', context: err.message });
-    }
+    console.error('Failed to fetch tasks', err);
+    recordActivity({
+      type: 'ERROR',
+      ts: new Date().toISOString(),
+      summary: 'Failed to load tasks',
+      detail: err.message || 'unknown error'
+    });
+    renderTaskTable();
   }
 }
 
-async function fetchTaskDetail(taskId, options = {}) {
-  if (!taskId || !state.connection.orchestratorUrl) return;
+async function loadTaskDetail(taskId) {
+  if (!orchestratorClient) return;
   try {
-    const detail = await apiRequest(state.connection.orchestratorUrl, `/task/${encodeURIComponent(taskId)}`);
-    if (detail?.task) {
-      state.tasks.set(detail.task.id, detail.task);
-      state.taskDetails.set(taskId, detail);
-      mergeTaskEvents(taskId, detail.events || []);
-      renderTasks();
-      renderTaskDetail(taskId);
-      if (options.showStatus) {
-        setStatus(`Task ${shortId(taskId)} refreshed.`, 'ok');
-      }
-    }
+    const detail = await orchestratorClient.getTask(taskId);
+    state.selectedTaskDetail = detail;
+    renderTaskDetail();
   } catch (err) {
-    console.error('Failed to fetch task detail', err);
-    setStatus(`Failed to fetch task detail: ${err.message}`, 'error');
-    addActivity({ label: 'Failed to fetch task detail', level: 'error', context: err.message });
+    console.error('Failed to load task detail', err);
+    state.selectedTaskDetail = null;
+    renderTaskDetail('Unable to load task detail.');
   }
 }
 
-function mergeTaskEvents(taskId, events) {
-  if (!Array.isArray(events)) return;
-  const existing = state.taskEvents.get(taskId) || [];
-  const map = new Map(existing.map((evt) => [evt.id, evt]));
-  events.map((evt) => normalizeTaskEvent(evt)).forEach((evt) => {
-    if (evt) {
-      map.set(evt.id, evt);
-    }
-  });
-  const merged = Array.from(map.values()).sort((a, b) => new Date(a.ts) - new Date(b.ts));
-  const trimmed = merged.length > MAX_EVENTS ? merged.slice(merged.length - MAX_EVENTS) : merged;
-  state.taskEvents.set(taskId, trimmed);
-}
+async function refreshActivity() {
+  state.events = [];
 
-function startWebsocket() {
-  if (!state.connection.orchestratorUrl) return;
-  closeWebsocket();
-  let wsUrl;
-  try {
-    wsUrl = buildWsUrl(state.connection.orchestratorUrl);
-  } catch (err) {
-    console.error('Failed to construct websocket URL', err);
-    addActivity({ label: 'WebSocket URL invalid', level: 'error', context: err.message });
-    return;
-  }
-  const socket = new WebSocket(wsUrl);
-  socket.onopen = () => {
-    addActivity({ label: 'WebSocket connected', level: 'success' });
-  };
-  socket.onmessage = (event) => {
-    handleWebsocketMessage(event.data);
-  };
-  socket.onerror = (event) => {
-    console.error('WebSocket error', event);
-    addActivity({ label: 'WebSocket error', level: 'error' });
-  };
-  socket.onclose = () => {
-    addActivity({ label: 'WebSocket disconnected', level: 'warn' });
-    state.ws = null;
-  };
-  state.ws = socket;
-}
-
-function closeWebsocket() {
-  if (state.ws) {
+  if (loggingClient) {
     try {
-      state.ws.close();
+      const response = await loggingClient.fetchLogs({ limit: 50 });
+      const logs = Array.isArray(response?.logs) ? response.logs : [];
+      logs
+        .sort((a, b) => new Date(a.ts_utc).getTime() - new Date(b.ts_utc).getTime())
+        .forEach((log) => {
+          recordActivity(buildActivityEntry('LOG', log.ts_utc || log.ts, log.message, log));
+        });
     } catch (err) {
-      console.warn('Error closing websocket', err);
+      console.warn('Failed to preload logs', err);
     }
   }
-  state.ws = null;
-}
 
-function buildWsUrl(baseUrl) {
-  const url = new URL(resolveUrl(baseUrl, 'ws'));
-  url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:';
-  return url.toString();
-}
-
-function handleWebsocketMessage(payload) {
-  let frame;
-  try {
-    frame = JSON.parse(payload);
-  } catch (err) {
-    console.error('Failed to parse websocket payload', err);
-    return;
-  }
-  if (!frame || !frame.type) return;
-  const timestamp = frame.ts || new Date().toISOString();
-
-  if (frame.type === 'TASK_UPDATE' && frame.data?.task) {
-    const task = frame.data.task;
-    state.tasks.set(task.id, task);
-    renderTasks();
-    if (state.selectedTaskId === task.id) {
-      renderTaskDetail(task.id);
-    }
-    addActivity({
-      ts: timestamp,
-      label: `Task ${shortId(task.id)} → ${task.status}`,
-      level: task.status === 'error' ? 'error' : task.status === 'done' ? 'success' : 'info',
-      context: { id: task.id, status: task.status }
-    });
-    return;
-  }
-
-  if (frame.type === 'TASK_EVENT' && frame.data) {
-    storeTaskEvent(frame.data, timestamp);
-    return;
-  }
-
-  if (frame.type === 'LOG' && frame.data) {
-    storeLogEntry(frame.data, timestamp);
-    return;
-  }
-
-  addActivity({ ts: timestamp, label: `Received ${frame.type} frame`, level: 'info' });
-}
-
-function storeTaskEvent(rawEvent, fallbackTs) {
-  const event = normalizeTaskEvent(rawEvent, fallbackTs);
-  if (!event) return;
-  const events = state.taskEvents.get(event.taskId) || [];
-  if (!events.find((existing) => existing.id === event.id)) {
-    events.push(event);
-    events.sort((a, b) => new Date(a.ts) - new Date(b.ts));
-    if (events.length > MAX_EVENTS) {
-      events.splice(0, events.length - MAX_EVENTS);
-    }
-    state.taskEvents.set(event.taskId, events);
-  }
-  addActivity({
-    ts: event.ts,
-    label: `Event · ${event.kind} (${shortId(event.taskId)})`,
-    level: event.kind === 'error' ? 'error' : 'info',
-    context: event.data || null
+  // Include recent task snapshots as context
+  const tasks = Array.from(state.tasks.values())
+    .sort((a, b) => new Date(a.updated_at).getTime() - new Date(b.updated_at).getTime())
+    .slice(-10);
+  tasks.forEach((task) => {
+    recordActivity(
+      buildActivityEntry(
+        'TASK_UPDATE',
+        task.updated_at,
+        `Task ${shortId(task.id)} is ${task.status}`,
+        task
+      )
+    );
   });
-  if (state.selectedTaskId === event.taskId) {
-    renderTaskDetail(event.taskId);
-  }
-}
 
-function normalizeTaskEvent(rawEvent, fallbackTs) {
-  if (!rawEvent) return null;
-  const taskId = rawEvent.taskId || rawEvent.task_id;
-  if (!taskId) return null;
-  const ts = rawEvent.ts || rawEvent.ts_utc || fallbackTs || new Date().toISOString();
-  const id = rawEvent.id || `${taskId}-${rawEvent.kind || 'event'}-${ts}`;
-  return {
-    id,
-    taskId,
-    ts,
-    actor: rawEvent.actor || 'unknown',
-    kind: rawEvent.kind || 'event',
-    data: rawEvent.data ?? null
-  };
+  renderActivity();
 }
-
-function storeLogEntry(rawLog, fallbackTs) {
-  const log = normalizeLog(rawLog, fallbackTs);
-  if (!log) return;
-  if (!state.logs.find((existing) => existing.id === log.id)) {
-    state.logs.unshift(log);
-    if (state.logs.length > MAX_LOGS) {
-      state.logs.length = MAX_LOGS;
-    }
-    renderLogs();
-  }
-  addActivity({
-    ts: log.ts,
-    label: `Log · ${log.service || 'unknown'} (${log.level})`,
-    level: log.level === 'error' ? 'error' : log.level === 'warn' ? 'warn' : 'info',
-    context: log.message
-  });
-}
-
-function normalizeLog(rawLog, fallbackTs) {
-  if (!rawLog) return null;
-  const ts = rawLog.ts_utc || rawLog.ts || fallbackTs || new Date().toISOString();
-  const id = rawLog.id || `${rawLog.service || 'log'}-${ts}-${rawLog.message || ''}`;
-  return {
-    id,
-    ts,
-    service: rawLog.service || 'log',
-    level: (rawLog.level || 'info').toLowerCase(),
-    message: rawLog.message || '',
-    traceId: rawLog.trace_id || rawLog.traceId || null,
-    correlationId: rawLog.correlation_id || rawLog.correlationId || null,
-    taskId: rawLog.task_id || rawLog.taskId || null,
-    data: rawLog.data ?? null
-  };
-}
-
-async function loadRecentLogs() {
-  if (!state.connection.loggingUrl) return;
-  try {
-    const response = await apiRequest(state.connection.loggingUrl, '/logs?limit=50');
-    const logs = Array.isArray(response?.logs) ? response.logs.map((item) => normalizeLog(item)).filter(Boolean) : [];
-    logs.sort((a, b) => new Date(b.ts) - new Date(a.ts));
-    state.logs = logs.slice(0, MAX_LOGS);
-    renderLogs();
-  } catch (err) {
-    console.warn('Failed to load log history', err);
-    addActivity({ label: 'Failed to load log history', level: 'warn', context: err.message });
-  }
-}
-
 
 async function refreshConfig() {
-  const services = gatherServiceEndpoints();
-  if (!services.length) {
+  const targets = [
+    { key: 'orchestrator', name: 'Orchestrator', base: settings.orchestratorUrl },
+    { key: 'logging', name: 'Logging', base: settings.loggingUrl },
+    { key: 'echo', name: 'Echo Agent', base: settings.echoUrl },
+    { key: 'renderctl', name: 'Render Control', base: settings.renderctlUrl }
+  ].filter((target) => target.base);
+
+  if (!targets.length) {
     state.configReports = [];
-    renderConfig();
+    renderConfigReports('Provide service URLs above to run config validation.');
     return;
   }
 
-  const results = await Promise.all(
-    services.map(async (service) => {
+  const headers = buildAuthHeaders();
+  const reports = await Promise.all(
+    targets.map(async (target) => {
       try {
-        const report = await apiRequest(service.baseUrl, '/config/validate');
-        return { serviceName: report?.service || service.name, baseUrl: service.baseUrl, report };
+        const url = new URL('/config/validate', target.base).toString();
+        const response = await fetch(url, { headers });
+        if (!response.ok) {
+          const text = await response.text();
+          throw new Error(text || `HTTP ${response.status}`);
+        }
+        const json = await response.json();
+        return {
+          key: target.key,
+          name: target.name,
+          status: json.status || 'unknown',
+          required: json.required || {},
+          optional: json.optional || {},
+          errors: json.errors || []
+        };
       } catch (err) {
-        return { serviceName: service.name, baseUrl: service.baseUrl, error: err };
+        return {
+          key: target.key,
+          name: target.name,
+          status: 'error',
+          required: {},
+          optional: {},
+          errors: [{ message: err.message || 'Failed to fetch config report' }]
+        };
       }
     })
   );
 
-  state.configReports = results;
-  renderConfig();
+  state.configReports = reports;
+  renderConfigReports();
 }
 
-function gatherServiceEndpoints() {
-  const endpoints = [];
-  if (state.connection.orchestratorUrl) {
-    endpoints.push({ name: 'orchestrator-svc', baseUrl: state.connection.orchestratorUrl });
-  }
-  if (state.connection.loggingUrl) {
-    endpoints.push({ name: 'logging-svc', baseUrl: state.connection.loggingUrl });
-  }
-  if (state.connection.echoUrl) {
-    endpoints.push({ name: 'echo-agent-svc', baseUrl: state.connection.echoUrl });
-  }
-  if (state.connection.renderctlUrl) {
-    endpoints.push({ name: 'renderctl-svc', baseUrl: state.connection.renderctlUrl });
-  }
-  return endpoints;
-}
-
-function renderTasks() {
-  if (!elements.tasksTableBody) return;
-  const tasks = Array.from(state.tasks.values());
-  tasks.sort((a, b) => new Date(b.updated_at || b.created_at || 0) - new Date(a.updated_at || a.created_at || 0));
-  const filtered = state.tasksFilter === 'all' ? tasks : tasks.filter((task) => task.status === state.tasksFilter);
-
-  if (!filtered.length) {
-    elements.tasksTableBody.innerHTML =
-      '<tr class="empty"><td colspan="7">No tasks yet. Create one above to get started.</td></tr>';
+function connectWebsocket() {
+  const wsUrl = settings.websocketUrl || deriveWsUrl(settings.orchestratorUrl);
+  if (!wsUrl) {
+    setConnectionStatus('error', 'Invalid WebSocket URL');
     return;
   }
 
-  const rows = filtered
-    .map((task) => {
-      const rowClass = state.selectedTaskId === task.id ? 'is-selected' : '';
-      return `<tr data-task-id="${task.id}" class="${rowClass}">
-          <td><span class="mono" title="${escapeHtml(task.id)}">${escapeHtml(shortId(task.id))}</span></td>
-          <td>${renderStatusPill(task.status)}</td>
-          <td>${escapeHtml(task.type || '—')}</td>
-          <td>${escapeHtml(task.source || '—')}</td>
-          <td>${escapeHtml(formatDateTime(task.updated_at || task.created_at))}</td>
-          <td>${typeof task.version === 'number' ? task.version : '—'}</td>
-          <td><button class="button ghost" data-action="view-task" data-task-id="${task.id}">Inspect</button></td>
-        </tr>`;
-    })
-    .join('');
-
-  elements.tasksTableBody.innerHTML = rows;
-}
-
-function renderStatusPill(status) {
-  const normalized = sanitizeStatus(status);
-  return `<span class="pill status-${normalized}">${escapeHtml(normalized)}</span>`;
-}
-
-function renderTaskDetail(taskId = state.selectedTaskId) {
-  if (!elements.taskDetail) return;
-  if (!taskId) {
-    elements.taskDetail.innerHTML = '<p class="hint">Select a task from the table to inspect payloads, results, and event history.</p>';
+  try {
+    websocket = new WebSocket(wsUrl);
+  } catch (err) {
+    console.error('WebSocket connection failed', err);
+    setConnectionStatus('error', 'WebSocket error');
+    scheduleReconnect();
     return;
   }
-  const task = state.tasks.get(taskId) || state.taskDetails.get(taskId)?.task;
-  if (!task) {
-    elements.taskDetail.innerHTML = '<p class="hint">Task not found. Refresh tasks to sync the dashboard.</p>';
-    return;
+
+  websocket.onopen = () => {
+    setConnectionStatus('connected', 'Live');
+  };
+
+  websocket.onerror = (event) => {
+    console.warn('WebSocket error', event);
+    setConnectionStatus('error', 'WebSocket error');
+  };
+
+  websocket.onclose = () => {
+    setConnectionStatus('disconnected', 'Disconnected');
+    scheduleReconnect();
+  };
+
+  websocket.onmessage = (event) => {
+    try {
+      const frame = JSON.parse(event.data);
+      handleWebsocketFrame(frame);
+    } catch (err) {
+      console.error('Failed to parse websocket frame', err);
+    }
+  };
+}
+
+function disconnectWebsocket() {
+  if (websocket) {
+    websocket.onopen = null;
+    websocket.onclose = null;
+    websocket.onerror = null;
+    websocket.onmessage = null;
+    websocket.close();
+    websocket = null;
   }
-  const events = getTaskEvents(taskId);
-  const eventsMarkup = events.length
-    ? `<ul class="bullet-list">${events
-        .map(
-          (event) => `<li>
-              <strong>${escapeHtml(event.kind)}</strong> · ${escapeHtml(event.actor)} · ${escapeHtml(formatDateTime(event.ts))}
-              ${event.data !== null && event.data !== undefined ? `<pre class="json-block">${escapeHtml(formatJson(event.data))}</pre>` : ''}
-            </li>`
+  if (reconnectTimer) {
+    clearTimeout(reconnectTimer);
+    reconnectTimer = null;
+  }
+}
+
+function scheduleReconnect() {
+  if (reconnectTimer || !settings.orchestratorUrl) return;
+  reconnectTimer = setTimeout(() => {
+    reconnectTimer = null;
+    connectWebsocket();
+  }, 4000);
+}
+
+function handleWebsocketFrame(frame) {
+  if (!frame || !frame.type) return;
+  const { type, data, ts } = frame;
+
+  switch (type) {
+    case 'TASK_UPDATE': {
+      if (data && data.id) {
+        state.tasks.set(data.id, data);
+        renderSummary();
+        renderTaskTable();
+        if (state.selectedTaskId === data.id) {
+          // refresh detail from latest data if version changed
+          loadTaskDetail(data.id);
+        }
+        recordActivity(
+          buildActivityEntry(
+            'TASK_UPDATE',
+            ts || data.updated_at,
+            `Task ${shortId(data.id)} is ${data.status}`,
+            data
+          )
+        );
+      }
+      break;
+    }
+    case 'TASK_EVENT': {
+      if (data && data.taskId && state.selectedTaskDetail?.task?.id === data.taskId) {
+        const eventSnapshot = {
+          id: data.id,
+          task_id: data.taskId,
+          actor: data.actor,
+          kind: data.kind,
+          data: data.data || null,
+          ts_utc: data.ts || new Date().toISOString()
+        };
+        state.selectedTaskDetail.events = state.selectedTaskDetail.events || [];
+        state.selectedTaskDetail.events.push(eventSnapshot);
+        renderTaskDetail();
+      }
+      recordActivity(
+        buildActivityEntry(
+          'TASK_EVENT',
+          data?.ts || ts,
+          `${data?.kind || 'event'} from ${data?.actor || 'unknown'}`,
+          data
         )
-        .join('')}</ul>`
-    : '<p class="hint">No events recorded yet.</p>';
-  const payloadBlock = `<pre class="json-block">${escapeHtml(formatJson(task.payload || {}))}</pre>`;
-  const resultBlock =
-    task.result !== null && task.result !== undefined
-      ? `<pre class="json-block">${escapeHtml(formatJson(task.result))}</pre>`
-      : '<p class="hint">No result recorded.</p>';
-  const errorBlock =
-    task.error !== null && task.error !== undefined
-      ? `<pre class="json-block">${escapeHtml(formatJson(task.error))}</pre>`
-      : '<p class="hint">No error payload.</p>';
+      );
+      break;
+    }
+    case 'LOG': {
+      recordActivity(
+        buildActivityEntry(
+          'LOG',
+          data?.ts_utc || ts,
+          `${data?.service || 'log'} • ${data?.message || ''}`.trim(),
+          data
+        )
+      );
+      break;
+    }
+    default:
+      recordActivity(buildActivityEntry(type, ts, type, data));
+      break;
+  }
+}
 
-  elements.taskDetail.innerHTML = `
-    <div class="detail-meta">
-      <div class="detail-row"><span class="label">ID</span><span class="mono">${escapeHtml(task.id)}</span></div>
-      <div class="detail-row"><span class="label">Status</span><span>${renderStatusPill(task.status)}</span></div>
-      <div class="detail-row"><span class="label">Trace ID</span><span class="mono">${escapeHtml(task.trace_id || task.traceId || '—')}</span></div>
-      <div class="detail-row"><span class="label">Correlation</span><span class="mono">${escapeHtml(task.correlation_id || task.correlationId || '—')}</span></div>
-      <div class="detail-row"><span class="label">Created</span><span>${escapeHtml(formatDateTime(task.created_at))}</span></div>
-      <div class="detail-row"><span class="label">Updated</span><span>${escapeHtml(formatDateTime(task.updated_at))}</span></div>
+function renderSummary() {
+  const totals = { total: 0, queued: 0, running: 0, done: 0, error: 0 };
+  for (const task of state.tasks.values()) {
+    totals.total += 1;
+    if (task.status && totals[task.status] !== undefined) {
+      totals[task.status] += 1;
+    }
+  }
+  elements.summary.total.textContent = totals.total;
+  elements.summary.queued.textContent = totals.queued;
+  elements.summary.running.textContent = totals.running;
+  elements.summary.done.textContent = totals.done;
+  elements.summary.error.textContent = totals.error;
+}
+
+function renderTaskTable() {
+  const tbody = elements.taskTableBody;
+  if (!tbody) return;
+
+  const rows = Array.from(state.tasks.values());
+  rows.sort((a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime());
+
+  if (!rows.length) {
+    tbody.innerHTML = '<tr class="empty"><td colspan="5">No tasks available.</td></tr>';
+    return;
+  }
+
+  const parts = rows.map((task) => {
+    const statusClass = `status-pill status-${task.status || 'queued'}`;
+    const correlation = task.correlation_id || '—';
+    return `
+      <tr data-task-id="${task.id}" class="${state.selectedTaskId === task.id ? 'active' : ''}">
+        <td class="mono">${shortId(task.id)}</td>
+        <td>${escapeHtml(task.type)}</td>
+        <td><span class="${statusClass}">${escapeHtml(task.status || 'queued')}</span></td>
+        <td>${formatTimestamp(task.updated_at)}</td>
+        <td class="mono">${escapeHtml(correlation)}</td>
+      </tr>
+    `;
+  });
+
+  tbody.innerHTML = parts.join('');
+}
+
+function renderTaskDetail(errorMessage) {
+  const container = elements.taskDetail;
+  if (!container) return;
+
+  if (errorMessage) {
+    container.classList.remove('empty');
+    container.innerHTML = `<div class="section">${escapeHtml(errorMessage)}</div>`;
+    return;
+  }
+
+  const detail = state.selectedTaskDetail;
+  if (!detail || !detail.task) {
+    container.classList.add('empty');
+    container.textContent = 'Select a task to inspect payload, result, and events.';
+    return;
+  }
+
+  container.classList.remove('empty');
+  const task = detail.task;
+  const events = Array.isArray(detail.events) ? detail.events.slice().reverse() : [];
+
+  container.innerHTML = `
+    <div class="section">
+      <h3>${escapeHtml(task.type)} • <span class="status-pill status-${task.status}">${escapeHtml(task.status)}</span></h3>
+      <p>Task ID: <span class="mono">${escapeHtml(task.id)}</span></p>
+      <p>Correlation ID: <span class="mono">${escapeHtml(task.correlation_id || '—')}</span></p>
+      <p>Trace ID: <span class="mono">${escapeHtml(task.trace_id)}</span></p>
+      <p>Updated: ${formatTimestamp(task.updated_at)}</p>
     </div>
-    <div class="detail-actions">
-      <button class="button" data-action="refresh-detail" data-task-id="${task.id}">Refresh</button>
-    </div>
-    <div class="detail-section">
+    <div class="section">
       <h3>Payload</h3>
-      ${payloadBlock}
+      <pre class="json-block">${escapeHtml(formatJson(task.payload))}</pre>
     </div>
-    <div class="detail-section">
+    <div class="section">
       <h3>Result</h3>
-      ${resultBlock}
+      <pre class="json-block">${escapeHtml(formatJson(task.result))}</pre>
     </div>
-    <div class="detail-section">
+    <div class="section">
       <h3>Error</h3>
-      ${errorBlock}
+      <pre class="json-block">${escapeHtml(formatJson(task.error))}</pre>
     </div>
-    <div class="detail-section">
+    <div class="section">
       <h3>Events</h3>
-      ${eventsMarkup}
+      ${events.length ? renderEvents(events) : '<p class="hint">No events recorded.</p>'}
     </div>
   `;
 }
 
-function getTaskEvents(taskId) {
-  const detailEvents = state.taskDetails.get(taskId)?.events || [];
-  const normalizedDetail = detailEvents.map((evt) => normalizeTaskEvent(evt)).filter(Boolean);
-  const streamEvents = state.taskEvents.get(taskId) || [];
-  const map = new Map();
-  normalizedDetail.forEach((evt) => map.set(evt.id, evt));
-  streamEvents.forEach((evt) => map.set(evt.id, evt));
-  return Array.from(map.values()).sort((a, b) => new Date(a.ts) - new Date(b.ts));
+function renderEvents(events) {
+  const items = events.map((event) => {
+    return `
+      <li>
+        <header>
+          <span>${escapeHtml(event.kind)}</span>
+          <time>${formatTimestamp(event.ts_utc || event.ts)}</time>
+        </header>
+        <div>Actor: <span class="mono">${escapeHtml(event.actor)}</span></div>
+        ${event.data ? `<pre class="json-block">${escapeHtml(formatJson(event.data))}</pre>` : ''}
+      </li>
+    `;
+  });
+  return `<ul class="events-list">${items.join('')}</ul>`;
 }
 
 function renderActivity() {
-  if (!elements.activityList) return;
-  if (!state.activity.length) {
-    elements.activityList.innerHTML = '<li class="timeline__item timeline__item--empty">No activity yet.</li>';
+  const list = elements.activityList;
+  if (!list) return;
+
+  if (!state.events.length) {
+    list.innerHTML = '<li class="empty">No activity yet.</li>';
     return;
   }
-  const items = state.activity
-    .map(
-      (entry) => `<li class="timeline__item">
-          <div class="timeline__ts">${escapeHtml(formatTime(entry.ts))}</div>
-          <div class="timeline__content">
-            <div class="timeline__label">${escapeHtml(entry.label)}</div>
-            ${renderActivityContext(entry.context)}
-          </div>
-        </li>`
-    )
-    .join('');
-  elements.activityList.innerHTML = items;
+
+  const fragment = document.createDocumentFragment();
+  state.events.forEach((entry) => {
+    const template = elements.activityTemplate?.content?.firstElementChild;
+    const node = template ? template.cloneNode(true) : document.createElement('li');
+    node.className = `activity-item activity-${entry.type.toLowerCase()}`;
+
+    const typeEl = node.querySelector('.activity-type');
+    const timeEl = node.querySelector('time');
+    const summaryEl = node.querySelector('.activity-summary');
+    const detailEl = node.querySelector('.activity-detail');
+
+    if (typeEl) typeEl.textContent = entry.typeLabel;
+    if (timeEl) timeEl.textContent = formatTimestamp(entry.ts);
+    if (summaryEl) summaryEl.textContent = entry.summary;
+    if (detailEl) {
+      detailEl.textContent = entry.detail || '';
+      if (!entry.detail) {
+        detailEl.classList.add('hidden');
+      } else {
+        detailEl.classList.remove('hidden');
+      }
+    }
+
+    fragment.appendChild(node);
+  });
+
+  list.innerHTML = '';
+  list.appendChild(fragment);
 }
 
-function addActivity(entry) {
-  const normalized = {
-    ts: entry.ts || new Date().toISOString(),
-    label: entry.label || 'Activity',
-    level: entry.level || 'info',
-    context: entry.context ?? null
-  };
-  state.activity.unshift(normalized);
-  if (state.activity.length > MAX_ACTIVITY) {
-    state.activity.length = MAX_ACTIVITY;
+function renderConfigReports(fallbackMessage) {
+  const container = elements.configResults;
+  if (!container) return;
+
+  if (fallbackMessage) {
+    container.textContent = fallbackMessage;
+    return;
+  }
+
+  if (!state.configReports.length) {
+    container.textContent = 'No config reports yet.';
+    return;
+  }
+
+  container.innerHTML = state.configReports
+    .map((report) => {
+      const statusClass = report.status === 'ok' ? 'success' : 'error';
+      const requiredList = Object.entries(report.required || {})
+        .map(([key, value]) => `<li>${escapeHtml(key)}: ${escapeHtml(String(value))}</li>`)
+        .join('');
+      const optionalList = Object.entries(report.optional || {})
+        .map(([key, value]) => `<li>${escapeHtml(key)}: ${escapeHtml(String(value))}</li>`)
+        .join('');
+      const errors = (report.errors || [])
+        .map((err) => `<li>${escapeHtml(err.message || JSON.stringify(err))}</li>`)
+        .join('');
+
+      return `
+        <div class="config-entry ${statusClass}">
+          <header>
+            <span>${escapeHtml(report.name)}</span>
+            <span>${escapeHtml(report.status)}</span>
+          </header>
+          ${requiredList ? `<div><strong>Required</strong><ul>${requiredList}</ul></div>` : ''}
+          ${optionalList ? `<div><strong>Optional</strong><ul>${optionalList}</ul></div>` : ''}
+          ${errors ? `<div><strong>Errors</strong><ul>${errors}</ul></div>` : ''}
+        </div>
+      `;
+    })
+    .join('');
+}
+
+function toggleSettingsCard() {
+  if (!elements.settingsCard || !elements.toggleSettings) return;
+  elements.settingsCard.classList.toggle('collapsed');
+  elements.toggleSettings.textContent = elements.settingsCard.classList.contains('collapsed')
+    ? 'Expand'
+    : 'Collapse';
+}
+
+function setConnectionStatus(stateValue, label) {
+  const el = elements.connectionStatus;
+  if (!el) return;
+  el.dataset.state = stateValue;
+  el.textContent = label;
+}
+
+function recordActivity(entry) {
+  if (!entry) return;
+  state.events.unshift(entry);
+  if (state.events.length > MAX_ACTIVITY_ENTRIES) {
+    state.events.length = MAX_ACTIVITY_ENTRIES;
   }
   renderActivity();
 }
 
-function renderActivityContext(context) {
-  if (context === null || context === undefined || context === '') {
-    return '';
-  }
-  if (typeof context === 'string') {
-    return `<p class="timeline__text">${escapeHtml(context)}</p>`;
-  }
-  return `<details class="timeline__details"><summary>Details</summary><pre>${escapeHtml(formatJson(context))}</pre></details>`;
+function buildActivityEntry(type, ts, summary, data) {
+  return {
+    type,
+    typeLabel: formatActivityType(type),
+    ts: ts || new Date().toISOString(),
+    summary: summary || type,
+    detail: data ? formatJson(data) : '',
+    raw: data
+  };
 }
 
-function renderLogs() {
-  if (!elements.logsList) return;
-  if (!state.logs.length) {
-    elements.logsList.innerHTML = '<li class="timeline__item timeline__item--empty">No logs yet.</li>';
-    return;
+function formatActivityType(type) {
+  switch (type) {
+    case 'LOG':
+      return 'Log';
+    case 'TASK_UPDATE':
+      return 'Task';
+    case 'TASK_EVENT':
+      return 'Task Event';
+    case 'ERROR':
+      return 'Error';
+    default:
+      return type.replace(/_/g, ' ');
   }
-  const items = state.logs
-    .map(
-      (log) => `<li class="timeline__item">
-          <div class="timeline__ts">${escapeHtml(formatTime(log.ts))}</div>
-          <div class="timeline__content">
-            <div class="timeline__label">
-              <span class="pill log-level-${escapeHtml(log.level)}">${escapeHtml(log.level)}</span>
-              <span class="mono">${escapeHtml(log.service || 'log')}</span>
-            </div>
-            <p class="timeline__text">${escapeHtml(log.message || '')}</p>
-            ${renderLogDetails(log)}
-          </div>
-        </li>`
-    )
-    .join('');
-  elements.logsList.innerHTML = items;
 }
 
-
-function renderLogDetails(log) {
-  const meta = [];
-  if (log.traceId) meta.push(`trace ${log.traceId}`);
-  if (log.correlationId) meta.push(`corr ${log.correlationId}`);
-  if (log.taskId) meta.push(`task ${log.taskId}`);
-  const metaHtml = meta.length ? `<p class="timeline__text">${escapeHtml(meta.join(' · '))}</p>` : '';
-  const dataHtml =
-    log.data !== null && log.data !== undefined
-      ? `<details class="timeline__details"><summary>Payload</summary><pre>${escapeHtml(formatJson(log.data))}</pre></details>`
-      : '';
-  return `${metaHtml}${dataHtml}`;
+function clampLimit(value) {
+  if (!Number.isFinite(value) || value <= 0) return 50;
+  return Math.min(200, Math.max(1, Math.floor(value)));
 }
 
-function renderConfig() {
-  if (!elements.configResults) return;
-  if (!state.configReports.length) {
-    elements.configResults.innerHTML =
-      '<p class="hint">Provide base URLs above and run validation to inspect each service's configuration status.</p>';
-    return;
-  }
-  const cards = state.configReports
-    .map((entry) => {
-      if (entry.error) {
-        return `<div class="config-card config-card--error">
-            <div class="config-card__header">
-              <div>
-                <h3>${escapeHtml(entry.serviceName)}</h3>
-                <p class="config-card__url">${escapeHtml(entry.baseUrl)}</p>
-              </div>
-              <span class="pill status-error">ERROR</span>
-            </div>
-            <p class="timeline__text">${escapeHtml(entry.error.message || 'Unable to fetch report')}</p>
-          </div>`;
-      }
-      const report = entry.report || {};
-      const missingRequired = Object.entries(report.required || {})
-        .filter(([, status]) => status !== 'present')
-        .map(([key]) => key);
-      const errors = Array.isArray(report.errors) ? report.errors : [];
-      const status = sanitizeStatus(report.status || 'unknown');
-      return `<div class="config-card ${report.status === 'ok' ? '' : 'config-card--error'}">
-          <div class="config-card__header">
-            <div>
-              <h3>${escapeHtml(entry.serviceName)}</h3>
-              <p class="config-card__url">${escapeHtml(entry.baseUrl)}</p>
-            </div>
-            <span class="pill status-${status}">${escapeHtml(status.toUpperCase())}</span>
-          </div>
-          <div class="detail-section">
-            <h3>Required keys</h3>
-            ${
-              missingRequired.length
-                ? `<ul class="bullet-list">${missingRequired.map((key) => `<li>${escapeHtml(key)}</li>`).join('')}</ul>`
-                : '<p class="hint">All required keys present.</p>'
-            }
-          </div>
-          <div class="detail-section">
-            <h3>Validation errors</h3>
-            ${
-              errors.length
-                ? `<ul class="bullet-list">${errors
-                    .map((err) => `<li>${escapeHtml(`${err.instancePath || '/'} ${err.message || ''}`.trim())}</li>`)
-                    .join('')}</ul>`
-                : '<p class="hint">No schema violations detected.</p>'
-            }
-          </div>
-        </div>`;
-    })
-    .join('');
-  elements.configResults.innerHTML = cards;
+function highlightSelectedRow(taskId) {
+  const rows = elements.taskTableBody?.querySelectorAll('tr[data-task-id]');
+  if (!rows) return;
+  rows.forEach((row) => {
+    if (row.dataset.taskId === taskId) {
+      row.classList.add('active');
+    } else {
+      row.classList.remove('active');
+    }
+  });
 }
 
 function setTaskFeedback(message, variant) {
-  if (!elements.taskFeedback) return;
-  const classes = ['feedback', 'is-visible'];
-  if (variant === 'success') classes.push('success');
-  if (variant === 'error') classes.push('error');
-  elements.taskFeedback.className = classes.join(' ');
-  elements.taskFeedback.textContent = message;
-}
-
-function setStatus(message, variant) {
-  if (!elements.statusBanner) return;
-  const classes = ['status-banner'];
-  if (variant === 'ok') classes.push('status-ok');
-  if (variant === 'error') classes.push('status-error');
-  if (variant === 'pending') classes.push('status-pending');
-  elements.statusBanner.className = classes.join(' ');
-  elements.statusBanner.textContent = message;
-}
-
-async function apiRequest(baseUrl, path, options = {}) {
-  if (!baseUrl) {
-    throw new Error('Base URL is not configured');
-  }
-  const target = resolveUrl(baseUrl, path || '');
-  const headers = Object.assign({}, options.headers || {});
-  if (options.body !== undefined) {
-    headers['Content-Type'] = 'application/json';
-  }
-  headers.Accept = headers.Accept || 'application/json';
-  if (state.authHeader) {
-    headers.Authorization = state.authHeader;
-  }
-
-  const response = await fetch(target, {
-    method: options.method || (options.body ? 'POST' : 'GET'),
-    headers,
-    body: options.body !== undefined ? JSON.stringify(options.body) : undefined
-  });
-  const contentType = response.headers.get('content-type') || '';
-  const text = await response.text();
-
-  if (!response.ok) {
-    throw new Error(text || `Request failed with status ${response.status}`);
-  }
-
-  if (!text) return null;
-
-  if (contentType.includes('application/json')) {
-    try {
-      return JSON.parse(text);
-    } catch (err) {
-      throw new Error('Failed to parse JSON response');
-    }
-  }
-
-  try {
-    return JSON.parse(text);
-  } catch (_) {
-    return text;
-  }
-}
-
-function resolveUrl(baseUrl, path) {
-  const normalizedBase = baseUrl.endsWith('/') ? baseUrl : `${baseUrl}/`;
-  const normalizedPath = path.startsWith('/') ? path.slice(1) : path;
-  return new URL(normalizedPath, normalizedBase).toString();
-}
-
-function formatDateTime(value) {
-  if (!value) return '—';
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return String(value);
-  return `${date.toLocaleDateString([], { month: 'short', day: 'numeric' })} ${date.toLocaleTimeString([], {
-    hour: '2-digit',
-    minute: '2-digit',
-    second: '2-digit'
-  })}`;
-}
-
-function formatTime(value) {
-  const date = value ? new Date(value) : new Date();
-  if (Number.isNaN(date.getTime())) return String(value);
-  return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+  if (!elements.newTaskFeedback) return;
+  elements.newTaskFeedback.textContent = message;
+  elements.newTaskFeedback.className = `form-feedback ${variant}`;
 }
 
 function formatJson(value) {
+  if (value === undefined || value === null) return 'null';
   try {
     return JSON.stringify(value, null, 2);
   } catch (err) {
@@ -988,7 +815,7 @@ function formatJson(value) {
 }
 
 function escapeHtml(value) {
-  if (value === null || value === undefined) return '';
+  if (value === undefined || value === null) return '';
   return String(value)
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
@@ -997,13 +824,48 @@ function escapeHtml(value) {
     .replace(/'/g, '&#39;');
 }
 
-function shortId(value) {
+function formatTimestamp(value) {
   if (!value) return '—';
-  const str = String(value);
-  if (str.length <= 12) return str;
-  return `${str.slice(0, 6)}…${str.slice(-4)}`;
+  try {
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return value;
+    return date.toLocaleString(undefined, {
+      hour12: false,
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit'
+    });
+  } catch (err) {
+    return value;
+  }
 }
 
-function sanitizeStatus(status) {
-  return String(status || 'unknown').toLowerCase().replace(/[^a-z0-9_-]/g, '-');
+function shortId(id) {
+  if (!id) return '';
+  return id.length > 8 ? `${id.slice(0, 4)}…${id.slice(-4)}` : id;
+}
+
+function buildAuthHeaders() {
+  const header = encodeBasicAuth(settings.username, settings.password);
+  const headers = { 'Content-Type': 'application/json' };
+  if (header) headers.Authorization = header;
+  return headers;
+}
+
+function deriveWsUrl(baseUrl) {
+  if (!baseUrl) return null;
+  try {
+    const url = new URL(baseUrl);
+    url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:';
+    url.pathname = url.pathname.replace(/\/$/, '') + '/ws';
+    url.search = '';
+    url.hash = '';
+    return url.toString();
+  } catch (err) {
+    console.warn('Failed to derive websocket url', err);
+    return null;
+  }
 }
