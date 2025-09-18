@@ -19,6 +19,7 @@ Modular monorepo for a continuously running agent framework that coordinates out
 ## Documentation
 - [`docs/product-requirements.md`](docs/product-requirements.md) — comprehensive PRD covering architecture, module specs, APIs, data model, security, and roadmap.
 - [`docs/phase-1-build-pack.md`](docs/phase-1-build-pack.md) — execution guide for Phase 1 with status, deliverables, milestones, and acceptance criteria.
+- [`docs/testing.md`](docs/testing.md) — manual regression checklist spanning services, dashboard, and Render automation.
 
 ## Phase 1 Focus Areas
 - Implement database-backed task and log storage with optimistic locking and event trails.
@@ -35,8 +36,16 @@ Refer to the documentation above for detailed requirement breakdowns, user stori
 - `POST /render/deploy/:id` triggers a deploy immediately; `GET /render/services` lists current services with optional `type` and `name` filters.
 - Background monitoring can be enabled via `RENDER_MONITOR_SERVICES` (comma-separated names or `id:<serviceId>`). When a monitored static site build fails with missing publish directory or build command, renderctl patches the service to use `rootDir`=`.` / `buildCommand`=`./render-build.sh` / `publishPath`=`dashboard-web/dist` and reruns the deploy. Tune via `RENDER_STATIC_SITE_*` env vars.
 - `POST /render/blueprint/apply` reads `infra/render.blueprint.yaml` (or a supplied `blueprintPath`) and updates each listed service's `serviceDetails` and env vars. Pass `{ "dryRun": true }` to preview changes without touching Render.
+- `GET /task/events` on logging-svc surfaces the persisted event timeline for any task (filter by `taskId`, `corrId`, `traceId`, `actor`, or `kind`).
+
+## CLI Utilities
+- `npm run config:doctor` — print config validation status for the current environment.
+- `npm run test:smoke` — enqueue an echo task, await completion, and verify logs end-to-end.
+- `npm run render:status` — leverage `renderctl-svc` to list services and report the latest deploy status (use `--fail-on-error` to exit non-zero when any deploy failed).
+- `npm run dev:services` — launch orchestrator, logging, echo, and renderctl services locally with prefixed logs (pass `--only orchestrator,logging` to limit scope).
 
 ## Deployment notes
+- After every push to `main`, confirm each Render web service in the personal-ai-orchestration environment shows the latest deploy as `live`. Use `renderctl-svc` (`GET /render/services`) or the Render dashboard, and trigger a redeploy if any service reports `update_failed`.
 - Ensure every service is configured with the same `INTERNAL_KEY`, `BASIC_AUTH_USER`, and `BASIC_AUTH_PASS` so internal calls and Basic Auth succeed.
 - Set `LOGGING_URL` to the deployed logging-svc endpoint; orchestrator subscribes to `/logs/stream` to rebroadcast log frames over WebSocket.
 - Before deploying new environments, run `npm run config:doctor` or each service’s `/config/validate` endpoint to confirm env keys match `infra/config.schema.json`.

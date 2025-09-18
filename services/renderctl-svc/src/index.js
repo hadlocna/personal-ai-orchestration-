@@ -12,7 +12,8 @@ const {
   createService,
   listServices,
   updateEnvVars,
-  triggerDeploy
+  triggerDeploy,
+  getServiceDeploys
 } = require('./renderApi');
 const { startMonitor } = require('./monitor');
 const { applyBlueprint } = require('./blueprint');
@@ -97,6 +98,20 @@ function bootstrap() {
       name: req.query.name
     });
     res.json({ services });
+  }));
+
+  app.get('/render/services/:id/deploys', asyncHandler(async (req, res) => {
+    const client = getClient();
+    const params = {};
+    const limit = Number.parseInt(req.query.limit, 10);
+    if (Number.isFinite(limit) && limit > 0 && limit <= 50) {
+      params.limit = limit;
+    }
+    if (req.query.cursor) {
+      params.cursor = req.query.cursor;
+    }
+    const deploys = await getServiceDeploys(client, req.params.id, params);
+    res.json(deploys);
   }));
 
   app.post('/render/blueprint/apply', asyncHandler(async (req, res) => {

@@ -50,12 +50,12 @@
    - ✅ `renderctl-svc` minimal API wrapping Render REST: create service, apply env, trigger deploy.
    - ✅ Automated build failure monitor fixes common static site misconfiguration and redeploys.
    - ✅ Support reading definitions from `infra/render.blueprint.yaml` (apply/sync).
-   - ⬜ CLI scripts or UI wiring for operators to execute renderctl flows.
+   - ✅ CLI script for renderctl operator workflows (`scripts/render-status.js`) ready for operators (Codex agent, 2025-09-18).
 
 8. **Ops & QA**
-   - Local dev scripts to run services (npm scripts or docker-compose).
+   - ✅ Local dev scripts to run services (npm scripts or docker-compose) via `npm run dev:services` (Codex agent, 2025-09-18).
    - Seed data + sample payloads for smoke testing (`examples/` folder optional).
-   - Document manual test plan in `docs/testing.md` (future).
+   - ✅ Document manual test plan in `docs/testing.md` (Codex agent, 2025-09-18).
 
 ## Milestones & Sequencing
 1. **Week 1**
@@ -76,4 +76,4 @@
 - Log entries and task events persist in Postgres and stream live over WebSocket.
 - Render environments can be created/updated via renderctl (no manual secret copying).
 
-_Last updated: 2025-09-17_
+_Last updated: 2025-09-18_
