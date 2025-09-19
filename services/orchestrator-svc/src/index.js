@@ -620,6 +620,20 @@ async function testHubspot() {
   const response = await fetch(url, { headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' } });
   const text = await response.text();
   if (!response.ok) {
+    // If scopes are missing, report as warn with detail rather than hard error
+    if (response.status === 403) {
+      let detail = 'Missing required scopes';
+      try {
+        const data = JSON.parse(text || '{}');
+        if (data && data.message) detail = data.message;
+      } catch (_) {}
+      return {
+        overall: 'warn',
+        checks: [
+          { key: 'scopes', label: 'Scopes', status: 'warn', detail }
+        ]
+      };
+    }
     const snippet = text ? text.slice(0, 160) : '';
     throw new Error(`HubSpot HTTP ${response.status}${snippet ? ` ${snippet}` : ''}`.trim());
   }
@@ -655,11 +669,10 @@ async function testOpenAi() {
 async function testGoogle() {
   const key = (process.env.GOOGLE_API_KEY || '').trim();
   const base = (process.env.GOOGLE_API_BASE_URL || process.env.GOOGLE_BASE_URL || 'https://www.googleapis.com').trim();
-  if (!key) {
-    return { overall: 'missing', checks: [], note: 'GOOGLE_API_KEY not configured' };
-  }
   const url = new URL('/discovery/v1/apis', base);
-  url.searchParams.set('key', key);
+  if (key) {
+    url.searchParams.set('key', key);
+  }
   const response = await fetch(url.toString(), { headers: { Accept: 'application/json' } });
   const text = await response.text();
   if (!response.ok) {
@@ -671,5 +684,11 @@ async function testGoogle() {
   const apis = Array.isArray(data.items) ? data.items.length : 0;
   const status = apis > 0 ? 'ok' : 'warn';
   const detail = apis > 0 ? `${apis} API(s) listed` : 'No APIs returned';
-  return { overall: status, checks: [{ key: 'discovery', label: 'Discovery', status, detail }] };
+  // If no key was provided but call succeeded, surface a warn to encourage adding a key
+  const overall = key ? status : (status === 'ok' ? 'warn' : status);
+  const checks = [{ key: 'discovery', label: 'Discovery', status, detail }];
+  if (!key) {
+    checks.push({ key: 'key', label: 'API Key', status: 'warn', detail: 'No GOOGLE_API_KEY set; using unauthenticated request' });
+  }
+  return { overall, checks };
 }
