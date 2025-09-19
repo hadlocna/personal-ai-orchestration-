@@ -7,11 +7,11 @@
 
 ## Implementation Tracks
 1. **Platform Foundations for Multi-Agent Expansion**
-   - Extend `infra/config.schema.json`, `.env.example`, and service config reports with Twilio/OpenAI credentials, webhook secrets, and agent URLs.
-   - Author follow-on migrations for communication dossiers (calls, messages, emails, artifacts) and agent registry metadata.
-   - Refactor the orchestrator to load handlers from a registry, enable dispatch-only handlers, and capture agent assignment metadata.
-   - Add signature verification helpers to `@repo/common` for webhook-driven services.
-   - Update local tooling and Render blueprints to include new agents out of the box.
+   - ✅ Extend `infra/config.schema.json`, `.env.example`, and service config reports with Twilio/OpenAI credentials, webhook secrets, and agent URLs. *(Codex agent — 2025-09-19)*
+   - ✅ Author follow-on migrations for communication dossiers (calls, messages, emails, artifacts) and agent registry metadata. *(Codex agent — 2025-09-19)*
+   - ⬜ Refactor the orchestrator to load handlers from a registry, enable dispatch-only handlers, and capture agent assignment metadata.
+   - ⬜ Add signature verification helpers to `@repo/common` for webhook-driven services.
+   - ⬜ Update local tooling and Render blueprints to include new agents out of the box.
 
 2. **Real-Time Outbound Voice Agent (Twilio)**
    - Scaffold `services/call-agent-svc` with shared middleware, Dockerfile, and workspace wiring.
@@ -59,4 +59,3 @@
 - **Phase 2.7** – QA, compliance, and runbook updates.
 
 Progress will be tracked via this document and commit history on `main`. Update sections as milestones land so downstream agents can pick up the next actionable work item.
-

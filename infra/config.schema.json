@@ -29,19 +29,31 @@
     "TWILIO_MESSAGING_SERVICE_SID": { "type": "string" },
     "TWILIO_WEBHOOK_SECRET": { "type": "string" },
     "TWILIO_TEST_MODE": { "type": "string" },
+    "TWILIO_BASE_URL": { "type": "string", "format": "uri" },
+    "TWILIO_API_BASE_URL": { "type": "string", "format": "uri" },
+    "TWILIO_CALLER_ID": { "type": "string" },
     "OPENAI_API_KEY": { "type": "string" },
     "OPENAI_MODEL": { "type": "string" },
+    "OPENAI_API_BASE_URL": { "type": "string", "format": "uri" },
     "DEFAULT_OUTBOUND_CHANNEL": { "type": "string" },
     "DEFAULT_FALLBACK_CHANNEL": { "type": "string" },
     "CHANNEL_ALLOW_LIST": { "type": "string" },
-    "WEBHOOK_PUBLIC_BASE_URL": { "type": "string", "format": "uri" }
+    "WEBHOOK_PUBLIC_BASE_URL": { "type": "string", "format": "uri" },
+    "HUBSPOT_ACCESS_TOKEN": { "type": "string" },
+    "HUBSPOT_BASE_URL": { "type": "string", "format": "uri" },
+    "GOOGLE_API_KEY": { "type": "string" },
+    "GOOGLE_API_BASE_URL": { "type": "string", "format": "uri" }
   },
   "required": [
     "BASIC_AUTH_USER",
     "BASIC_AUTH_PASS",
     "INTERNAL_KEY",
     "LOGGING_URL",
-    "POSTGRES_URL"
+    "POSTGRES_URL",
+    "TWILIO_ACCOUNT_SID",
+    "TWILIO_AUTH_TOKEN",
+    "TWILIO_WEBHOOK_SECRET",
+    "OPENAI_API_KEY"
   ],
   "additionalProperties": true
 }
