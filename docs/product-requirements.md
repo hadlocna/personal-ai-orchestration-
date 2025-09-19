@@ -44,7 +44,7 @@
   - `POST /task` — create task (generates `id`, `trace_id`, writes task + task_event).
   - `PATCH /task/:id` — optimistic updates using `ifVersion` precondition.
   - `GET /task/:id`, `GET /tasks` — retrieval with filters (`status`, `correlationId`, `since`).
-  - `GET /ws` — task/log streaming (secured via Basic Auth + allowed origins).
+  - `GET /ws` — task/log streaming (secured via Basic Auth + allowed origins); dashboard clients append `?auth=<base64(user:pass)>` during the upgrade handshake.
   - `GET /config/validate`, `GET /health`.
 - **Dependencies**: Postgres, `logging-svc`, shared config validator, internal key security.
 

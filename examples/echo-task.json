@@ -1,0 +1,12 @@
+{
+  "type": "echo",
+  "source": "examples.seed",
+  "correlationId": "sample-echo",
+  "payload": {
+    "message": "Hello from the sample task",
+    "context": {
+      "importance": "demo",
+      "createdBy": "seed-script"
+    }
+  }
+}
