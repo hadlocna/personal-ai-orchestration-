@@ -44,6 +44,7 @@ Refer to the documentation above for detailed requirement breakdowns, user stori
 ## CLI Utilities
 - `npm run config:doctor` — print config validation status for the current environment (pass a service name when needed). Each workspace also exposes `npm run --workspace @repo/<service> config:doctor` for convenience.
 - `npm run test:smoke` — enqueue an echo task, await completion, and verify logs end-to-end.
+- `npm run test:connectivity` — sanity check internal services plus Twilio, HubSpot, OpenAI, and Google integrations using the current environment variables.
 - `npm run seed:examples` — post sample echo tasks (optionally wait for completion) and emit a demo log.
 - `npm run render:status` — leverage `renderctl-svc` to list services and report the latest deploy status (use `--fail-on-error` to exit non-zero when any deploy failed).
 - `npm run dev:services` — launch orchestrator, logging, echo, and renderctl services locally with prefixed logs (pass `--only orchestrator,logging` to limit scope).
