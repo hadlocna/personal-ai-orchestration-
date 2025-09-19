@@ -4,16 +4,29 @@ const path = require('path');
 const srcDir = path.resolve(__dirname, '../src');
 const distDir = path.resolve(__dirname, '../dist');
 
-const ENV_MAPPINGS = [
-  ['twilioAccountSid', ['DASHBOARD_TWILIO_ACCOUNT_SID', 'TWILIO_ACCOUNT_SID']],
-  ['twilioAuthToken', ['DASHBOARD_TWILIO_AUTH_TOKEN', 'TWILIO_AUTH_TOKEN']],
-  ['hubspotApiKey', ['DASHBOARD_HUBSPOT_API_KEY', 'HUBSPOT_ACCESS_TOKEN']],
-  ['openaiApiKey', ['DASHBOARD_OPENAI_API_KEY', 'OPENAI_API_KEY']],
-  ['googleApiKey', ['DASHBOARD_GOOGLE_API_KEY', 'GOOGLE_API_KEY']],
+const PUBLIC_ENV_MAPPINGS = [
+  ['orchestratorUrl', ['DASHBOARD_ORCHESTRATOR_URL']],
+  ['websocketUrl', ['DASHBOARD_WEBSOCKET_URL']],
+  ['loggingUrl', ['DASHBOARD_LOGGING_URL']],
+  ['echoUrl', ['DASHBOARD_ECHO_URL']],
+  ['renderctlUrl', ['DASHBOARD_RENDERCTL_URL']],
   ['twilioBaseUrl', ['DASHBOARD_TWILIO_BASE_URL', 'TWILIO_API_BASE_URL', 'TWILIO_BASE_URL']],
   ['hubspotBaseUrl', ['DASHBOARD_HUBSPOT_BASE_URL', 'HUBSPOT_BASE_URL']],
   ['openaiBaseUrl', ['DASHBOARD_OPENAI_BASE_URL', 'OPENAI_API_BASE_URL']],
   ['googleBaseUrl', ['DASHBOARD_GOOGLE_BASE_URL', 'GOOGLE_API_BASE_URL']]
+];
+
+const SENSITIVE_ENV_NAMES = [
+  'DASHBOARD_TWILIO_ACCOUNT_SID',
+  'TWILIO_ACCOUNT_SID',
+  'DASHBOARD_TWILIO_AUTH_TOKEN',
+  'TWILIO_AUTH_TOKEN',
+  'DASHBOARD_HUBSPOT_API_KEY',
+  'HUBSPOT_ACCESS_TOKEN',
+  'DASHBOARD_OPENAI_API_KEY',
+  'OPENAI_API_KEY',
+  'DASHBOARD_GOOGLE_API_KEY',
+  'GOOGLE_API_KEY'
 ];
 
 function copyFile(srcFile, destFile) {
@@ -49,19 +62,27 @@ console.log(`Dashboard build output written to ${distDir}`);
 
 function writeRuntimeConfig() {
   const payload = {};
+  const injectedNames = [];
 
-  ENV_MAPPINGS.forEach(([key, names]) => {
-    for (const name of names) {
-      const raw = process.env[name];
-      if (typeof raw === 'string') {
-        const value = raw.trim();
-        if (value) {
-          payload[key] = value;
-          break;
-        }
-      }
+  PUBLIC_ENV_MAPPINGS.forEach(([key, names]) => {
+    const value = readFirstEnvValue(names);
+    if (value) {
+      payload[key] = value.value;
+      injectedNames.push(value.name);
     }
   });
+
+  const sensitiveProvided = SENSITIVE_ENV_NAMES.filter((name) => {
+    const raw = process.env[name];
+    return typeof raw === 'string' && raw.trim();
+  });
+
+  if (sensitiveProvided.length) {
+    console.warn(
+      'Skipping embedding of sensitive environment variables in dashboard bundle:',
+      sensitiveProvided.join(', ')
+    );
+  }
 
   if (!Object.keys(payload).length) {
     return;
@@ -73,4 +94,20 @@ function writeRuntimeConfig() {
     `window.__APP_DEFAULTS__ = Object.assign({}, window.__APP_DEFAULTS__, ${JSON.stringify(payload, null, 2)});\n`;
 
   fs.writeFileSync(targetFile, contents);
+
+  if (injectedNames.length) {
+    console.log('Injected public runtime configuration from environment:', injectedNames.join(', '));
+  }
+}
+
+function readFirstEnvValue(names) {
+  for (const name of names) {
+    const raw = process.env[name];
+    if (typeof raw !== 'string') continue;
+    const value = raw.trim();
+    if (value) {
+      return { name, value };
+    }
+  }
+  return null;
 }
