@@ -76,6 +76,43 @@ async function createService() {
     res.json(report);
   });
 
+  // Integration diagnostics
+  app.get('/integrations/twilio', async (req, res) => {
+    try {
+      const result = await testTwilio();
+      res.json(result);
+    } catch (err) {
+      res.status(500).json({ overall: 'error', error: err.message });
+    }
+  });
+
+  app.get('/integrations/hubspot', async (req, res) => {
+    try {
+      const result = await testHubspot();
+      res.json(result);
+    } catch (err) {
+      res.status(500).json({ overall: 'error', error: err.message });
+    }
+  });
+
+  app.get('/integrations/openai', async (req, res) => {
+    try {
+      const result = await testOpenAi();
+      res.json(result);
+    } catch (err) {
+      res.status(500).json({ overall: 'error', error: err.message });
+    }
+  });
+
+  app.get('/integrations/google', async (req, res) => {
+    try {
+      const result = await testGoogle();
+      res.json(result);
+    } catch (err) {
+      res.status(500).json({ overall: 'error', error: err.message });
+    }
+  });
+
   app.get('/ws', (req, res) => {
     res.status(426).json({ error: 'Upgrade Required' });
   });
@@ -544,3 +581,95 @@ module.exports = {
   createService,
   processTask
 };
+
+// -------- Integration Tests (server-side) --------
+async function testTwilio() {
+  const accountSid = (process.env.TWILIO_ACCOUNT_SID || '').trim();
+  const authToken = (process.env.TWILIO_AUTH_TOKEN || '').trim();
+  const baseUrl = (process.env.TWILIO_API_BASE_URL || process.env.TWILIO_BASE_URL || 'https://api.twilio.com').trim();
+  if (!accountSid || !authToken) {
+    return { overall: 'missing', checks: [], note: 'TWILIO_ACCOUNT_SID and TWILIO_AUTH_TOKEN not configured' };
+  }
+  const url = new URL(`/2010-04-01/Accounts/${encodeURIComponent(accountSid)}.json`, baseUrl).toString();
+  const credentials = Buffer.from(`${accountSid}:${authToken}`, 'utf-8').toString('base64');
+  const response = await fetch(url, {
+    headers: { Authorization: `Basic ${credentials}`, Accept: 'application/json' }
+  });
+  const text = await response.text();
+  if (!response.ok) {
+    const snippet = text ? text.slice(0, 160) : '';
+    throw new Error(`Twilio HTTP ${response.status}${snippet ? ` ${snippet}` : ''}`.trim());
+  }
+  let data = {};
+  try { data = text ? JSON.parse(text) : {}; } catch { throw new Error('Invalid JSON from Twilio'); }
+  const friendly = data.friendly_name || data.friendlyName || accountSid;
+  const status = typeof data.status === 'string' && data.status.toLowerCase() !== 'active' ? 'warn' : 'ok';
+  return {
+    overall: status,
+    checks: [{ key: 'credentials', label: 'Credentials', status, detail: `Account ${friendly}` }]
+  };
+}
+
+async function testHubspot() {
+  const token = (process.env.HUBSPOT_ACCESS_TOKEN || '').trim();
+  const base = (process.env.HUBSPOT_BASE_URL || 'https://api.hubapi.com').trim();
+  if (!token) {
+    return { overall: 'missing', checks: [], note: 'HUBSPOT_ACCESS_TOKEN not configured' };
+  }
+  const url = new URL('/crm/v3/owners/?limit=1', base).toString();
+  const response = await fetch(url, { headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' } });
+  const text = await response.text();
+  if (!response.ok) {
+    const snippet = text ? text.slice(0, 160) : '';
+    throw new Error(`HubSpot HTTP ${response.status}${snippet ? ` ${snippet}` : ''}`.trim());
+  }
+  let data = {};
+  try { data = text ? JSON.parse(text) : {}; } catch { throw new Error('Invalid JSON from HubSpot'); }
+  const count = Array.isArray(data.results) ? data.results.length : 0;
+  const status = count > 0 ? 'ok' : 'warn';
+  const detail = count > 0 ? 'Owner data retrieved' : 'No owners returned';
+  return { overall: status, checks: [{ key: 'owners', label: 'Owners', status, detail }] };
+}
+
+async function testOpenAi() {
+  const key = (process.env.OPENAI_API_KEY || '').trim();
+  const base = (process.env.OPENAI_API_BASE_URL || 'https://api.openai.com').trim();
+  if (!key) {
+    return { overall: 'missing', checks: [], note: 'OPENAI_API_KEY not configured' };
+  }
+  const url = new URL('/v1/models', base).toString();
+  const response = await fetch(url, { headers: { Authorization: `Bearer ${key}`, Accept: 'application/json' } });
+  const text = await response.text();
+  if (!response.ok) {
+    const snippet = text ? text.slice(0, 160) : '';
+    throw new Error(`OpenAI HTTP ${response.status}${snippet ? ` ${snippet}` : ''}`.trim());
+  }
+  let data = {};
+  try { data = text ? JSON.parse(text) : {}; } catch { throw new Error('Invalid JSON from OpenAI'); }
+  const models = Array.isArray(data.data) ? data.data.length : 0;
+  const status = models > 0 ? 'ok' : 'warn';
+  const detail = models > 0 ? `${models} model(s) available` : 'No models returned';
+  return { overall: status, checks: [{ key: 'models', label: 'Models', status, detail }] };
+}
+
+async function testGoogle() {
+  const key = (process.env.GOOGLE_API_KEY || '').trim();
+  const base = (process.env.GOOGLE_API_BASE_URL || process.env.GOOGLE_BASE_URL || 'https://www.googleapis.com').trim();
+  if (!key) {
+    return { overall: 'missing', checks: [], note: 'GOOGLE_API_KEY not configured' };
+  }
+  const url = new URL('/discovery/v1/apis', base);
+  url.searchParams.set('key', key);
+  const response = await fetch(url.toString(), { headers: { Accept: 'application/json' } });
+  const text = await response.text();
+  if (!response.ok) {
+    const snippet = text ? text.slice(0, 160) : '';
+    throw new Error(`Google HTTP ${response.status}${snippet ? ` ${snippet}` : ''}`.trim());
+  }
+  let data = {};
+  try { data = text ? JSON.parse(text) : {}; } catch { throw new Error('Invalid JSON from Google'); }
+  const apis = Array.isArray(data.items) ? data.items.length : 0;
+  const status = apis > 0 ? 'ok' : 'warn';
+  const detail = apis > 0 ? `${apis} API(s) listed` : 'No APIs returned';
+  return { overall: status, checks: [{ key: 'discovery', label: 'Discovery', status, detail }] };
+}
