@@ -503,6 +503,14 @@ async function refreshDatabaseSnapshot() {
     };
     renderDatabaseSnapshot();
     appendLog('warn', 'Database Snapshot', 'Skipped snapshot refresh because API clients are not connected.');
+    state.connectivity.dbSummary = {
+      key: 'database',
+      name: 'Database (Postgres)',
+      overall: 'missing',
+      category: 'database',
+      note: 'Connect orchestrator/logging clients to inspect database state.'
+    };
+    renderConnectivity();
     return;
   }
 
