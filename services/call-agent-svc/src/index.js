@@ -11,7 +11,9 @@ const {
   buildConfigReport,
   requireAuth,
   createDashboardCors,
+
   createServiceLogger
+
 } = require('@repo/common');
 
 const SERVICE_NAME = 'call-agent-svc';
@@ -70,6 +72,7 @@ function bootstrap() {
   const twilioClient = buildTwilioClient(runtime.twilio, logger);
 
   const app = express();
+
   const server = http.createServer(app);
 
   app.use(helmet());
@@ -243,13 +246,15 @@ function bootstrap() {
 
   app.use(requireAuth());
 
-  app.get('/health', (req, res) => {
+
+  app.get('/health', authMiddleware, (req, res) => {
     res.json({ service: SERVICE_NAME, status: 'ok', timestamp: new Date().toISOString() });
   });
 
-  app.get('/config/validate', (req, res) => {
+  app.get('/config/validate', authMiddleware, (req, res) => {
     res.json(buildConfigReport(SERVICE_NAME));
   });
+
 
   app.post('/call', async (req, res) => {
     const requestPayload = req.body || {};
@@ -480,6 +485,7 @@ function monitorOpenAiCall(callId, session, openAiConfig, logger, sessionStore) 
       'OpenAI-Beta': 'realtime=v1',
       'User-Agent': `${SERVICE_NAME}/1.0`
     }
+
   });
 
   socket.on('open', () => {
@@ -868,3 +874,4 @@ if (require.main === module) {
 }
 
 module.exports = { bootstrap };
+

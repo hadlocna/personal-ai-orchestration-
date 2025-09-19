@@ -128,20 +128,35 @@ async function createService() {
       return res.status(400).json({ error: 'source is required' });
     }
 
+    let handler = await resolveHandlerForTaskType(type);
+    if (!handler) {
+      logger.warn('TASK_TYPE_UNSUPPORTED', { data: { type } });
+      return res.status(422).json({ error: `Unsupported task type: ${type}` });
+    }
+    const agentDescriptor = buildAgentDescriptor(handler);
+
     const traceId = uuidv4();
 
     try {
-      const { task, event } = await createTask({
+      const { task, event, assignmentEvent } = await createTask({
         type,
         payload: payload ?? {},
         source,
         correlationId,
         traceId,
-        actor: deriveActor(req)
+        actor: deriveActor(req),
+        agent: agentDescriptor
       });
 
       logger.info('TASK_RECEIVED', {
-        data: { id: task.id, type, source, correlationId: correlationId || null }
+        data: {
+          id: task.id,
+          type,
+          source,
+          correlationId: correlationId || null,
+          agent: agentDescriptor.slug || null,
+          channel: agentDescriptor.channel || null
+        }
       });
       if (event) {
         logger.taskEvent({
@@ -153,12 +168,27 @@ async function createService() {
           correlationId: task.correlation_id
         });
       }
+      if (assignmentEvent) {
+        logger.taskEvent({
+          taskId: task.id,
+          actor: assignmentEvent.actor,
+          kind: assignmentEvent.kind,
+          data: assignmentEvent.data,
+          traceId: assignmentEvent.trace_id,
+          correlationId: assignmentEvent.correlation_id
+        });
+      }
 
       wsHub.broadcast('TASK_UPDATE', { task });
 
       queueMicrotask(() => processTask(task, { wsHub, logger }));
 
-      res.status(202).json({ id: task.id, traceId: task.trace_id, status: task.status });
+      res.status(202).json({
+        id: task.id,
+        traceId: task.trace_id,
+        status: task.status,
+        agent: formatAgentMeta(task)
+      });
     } catch (err) {
       console.error('Failed to create task', err);
       logger.error('TASK_CREATE_FAILED', {
@@ -373,6 +403,75 @@ function cleanExtras(extras) {
   );
 }
 
+async function resolveHandlerForTaskType(taskType) {
+  if (!taskType) return null;
+  if (!handlerRegistry) {
+    handlerRegistry = await HandlerRegistry.build();
+  }
+  let handler = handlerRegistry.resolve(taskType);
+  if (handler) return handler;
+
+  handlerRegistry = await HandlerRegistry.build();
+  handler = handlerRegistry.resolve(taskType);
+  return handler || null;
+}
+
+async function resolveHandlerForExistingTask(task) {
+  if (!handlerRegistry) {
+    handlerRegistry = await HandlerRegistry.build();
+  }
+
+  let handler = null;
+  if (task.agent_slug) {
+    handler = handlerRegistry.getBySlug(task.agent_slug);
+  }
+  if (!handler) {
+    handler = handlerRegistry.resolve(task.type);
+  }
+  if (handler) return handler;
+
+  handlerRegistry = await HandlerRegistry.build();
+  if (task.agent_slug) {
+    handler = handlerRegistry.getBySlug(task.agent_slug);
+  }
+  if (!handler) {
+    handler = handlerRegistry.resolve(task.type);
+  }
+  return handler || null;
+}
+
+function buildAgentDescriptor(handler, fallback = {}) {
+  if (!handler) {
+    return {
+      id: fallback.agent_id || null,
+      slug: fallback.agent_slug || null,
+      displayName: fallback.agent_display_name || fallback.agent_slug || null,
+      channel: fallback.agent_channel || null
+    };
+  }
+
+  return {
+    id: handler.id || null,
+    slug: handler.slug || null,
+    displayName: handler.displayName || handler.slug || null,
+    channel: handler.channel || null
+  };
+}
+
+function formatAgentMeta(task) {
+  if (!task) return null;
+  const meta = {
+    id: task.agent_id || null,
+    slug: task.agent_slug || null,
+    displayName: task.agent_display_name || task.agent_slug || null,
+    channel: task.agent_channel || null
+  };
+  if (!meta.id && !meta.slug && !meta.displayName && !meta.channel) {
+    return null;
+  }
+  return meta;
+}
+
 async function processTask(task, { wsHub, logger }) {
   let runningTask = task;
   let agent = null;
@@ -400,43 +499,34 @@ async function processTask(task, { wsHub, logger }) {
       });
     }
 
-    if (!handlerRegistry) {
-      handlerRegistry = await HandlerRegistry.build();
-    }
-    agent = handlerRegistry.resolve(task.type);
-    if (!agent) {
+    const handler = await resolveHandlerForExistingTask(runningTask);
+    if (!handler) {
       throw new Error(`UNSUPPORTED_TYPE:${task.type}`);
     }
+    agent = handler;
 
     logger.info('TASK_RUNNING', {
-      data: { id: task.id, type: task.type, agent: agent.slug, channel: agent.channel },
+      data: {
+        id: task.id,
+        type: task.type,
+        agent: handler.slug,
+        channel: handler.channel
+      },
       traceId: task.trace_id,
       correlationId: task.correlation_id
     });
 
-    logger.taskEvent({
-      taskId: runningTask.id,
-      actor: 'orchestrator',
-      kind: 'assignment',
-      data: {
-        agent: agent.slug,
-        channel: agent.channel
-      },
-      traceId: runningTask.trace_id,
-      correlationId: runningTask.correlation_id
-    });
-
     let agentResponse;
-    if (agent.mode === 'inline' && typeof agent.execute === 'function') {
-      agentResponse = await agent.execute({ task: runningTask, logger });
-    } else if (typeof agent.dispatch === 'function') {
-      agentResponse = await agent.dispatch({
+    if (handler.mode === 'inline' && typeof handler.execute === 'function') {
+      agentResponse = await handler.execute({ task: runningTask, logger });
+    } else if (typeof handler.dispatch === 'function') {
+      agentResponse = await handler.dispatch({
         task: runningTask,
         logger,
         emitTaskEvent: (event) => emitAgentEvent({
           logger,
           baseTask: runningTask,
-          agent,
+          agent: handler,
           event
         })
       });
@@ -448,7 +538,7 @@ async function processTask(task, { wsHub, logger }) {
 
     if (normalized.status === AgentDispatchStatus.DEFERRED) {
       if (normalized.result || normalized.ack || normalized.metadata) {
-        const agentResult = buildAgentResult(agent, normalized.result || null, {
+        const agentResult = buildAgentResult(handler, normalized.result || null, {
           status: 'pending',
           ack: normalized.ack || null,
           metadata: normalized.metadata || null
@@ -459,7 +549,7 @@ async function processTask(task, { wsHub, logger }) {
           ifVersion: runningTask.version,
           patch: { result: agentResult },
           event: {
-            actor: agent.slug,
+            actor: handler.slug,
             kind: 'dispatch_ack',
             data: agentResult
           }
@@ -481,7 +571,7 @@ async function processTask(task, { wsHub, logger }) {
       }
 
       logger.info('TASK_DISPATCHED', {
-        data: { id: task.id, type: task.type, agent: agent.slug, channel: agent.channel },
+        data: { id: task.id, type: task.type, agent: handler.slug, channel: handler.channel },
         traceId: task.trace_id,
         correlationId: task.correlation_id
       });
@@ -489,7 +579,7 @@ async function processTask(task, { wsHub, logger }) {
       return;
     }
 
-    const agentResult = buildAgentResult(agent, normalized.result, { status: 'completed' });
+    const agentResult = buildAgentResult(handler, normalized.result, { status: 'completed' });
 
     const completedResult = await applyTaskPatch({
       id: task.id,
@@ -506,7 +596,7 @@ async function processTask(task, { wsHub, logger }) {
 
     wsHub.broadcast('TASK_UPDATE', { task: completedTask });
     logger.info('TASK_COMPLETED', {
-      data: { id: task.id, type: task.type, agent: agent.slug, channel: agent.channel },
+      data: { id: task.id, type: task.type, agent: handler.slug, channel: handler.channel },
       traceId: task.trace_id,
       correlationId: task.correlation_id
     });

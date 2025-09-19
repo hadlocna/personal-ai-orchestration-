@@ -12,7 +12,8 @@
     "test:smoke": "node scripts/smoke-test.js",
     "render:status": "node scripts/render-status.js",
     "dev:services": "node scripts/dev-services.js",
-    "seed:examples": "node scripts/seed-examples.js"
+    "seed:examples": "node scripts/seed-examples.js",
+    "test:connectivity": "node scripts/test-connectivity.js"
   },
   "dependencies": {
     "ajv": "^8.12.0",

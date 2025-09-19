@@ -7,6 +7,12 @@ function sanitizeArray(maybeArray, fallback = []) {
   return maybeArray.map((value) => String(value)).filter(Boolean);
 }
 
+function pushIfValid(collection, candidate) {
+  if (candidate) {
+    collection.push(candidate);
+  }
+}
+
 function normalizeMode(value) {
   const mode = String(value || '').toLowerCase();
   if (mode === 'inline' || mode === 'dispatch') {
@@ -33,8 +39,10 @@ class HandlerRegistry {
       .filter(Boolean);
 
     const envHandlers = [];
-    const callHandler = createCallDispatchHandler();
-    if (callHandler) envHandlers.push(callHandler);
+    pushIfValid(envHandlers, createCallDispatchHandler());
+    pushIfValid(envHandlers, createMessagingDispatchHandler());
+    pushIfValid(envHandlers, createEmailDispatchHandler());
+    pushIfValid(envHandlers, createContentDispatchHandler());
 
     return new HandlerRegistry({ inlineHandlers, agents: [...agentHandlers, ...envHandlers] });
   }
@@ -45,6 +53,7 @@ class HandlerRegistry {
     if (!taskTypes.length) return;
 
     const normalized = {
+      id: definition.id || null,
       slug: definition.slug,
       displayName: definition.displayName,
       channel: definition.channel,
@@ -52,7 +61,8 @@ class HandlerRegistry {
       execute: definition.execute,
       dispatch: definition.dispatch,
       metadata: definition.metadata || {},
-      source: definition.source || 'inline'
+      source: definition.source || 'inline',
+      taskTypes
     };
 
     this._handlers.set(normalized.slug, normalized);
@@ -63,6 +73,11 @@ class HandlerRegistry {
 
   resolve(taskType) {
     return this._taskTypeIndex.get(taskType) || null;
+  }
+
+  getBySlug(slug) {
+    if (!slug) return null;
+    return this._handlers.get(slug) || null;
   }
 
   list() {
@@ -101,6 +116,84 @@ function createCallDispatchHandler() {
   };
 }
 
+const MESSAGING_AGENT_URL = process.env.MESSAGING_AGENT_URL;
+function createMessagingDispatchHandler() {
+  if (!MESSAGING_AGENT_URL) return null;
+  const endpoint = new URL('/messages', MESSAGING_AGENT_URL).toString();
+  return {
+    slug: 'messaging-agent',
+    displayName: 'Messaging Agent',
+    channel: 'messaging',
+    mode: 'dispatch',
+    taskTypes: ['sms.send', 'whatsapp.send'],
+    dispatch: buildDispatchExecutor(
+      { slug: 'messaging-agent' },
+      {
+        endpoint,
+        dispatch: {
+          method: 'POST',
+          includeTask: true,
+          expectJson: true
+        }
+      }
+    ),
+    metadata: { description: 'Outbound SMS/WhatsApp dispatch' },
+    source: 'env'
+  };
+}
+
+const EMAIL_AGENT_URL = process.env.EMAIL_AGENT_URL;
+function createEmailDispatchHandler() {
+  if (!EMAIL_AGENT_URL) return null;
+  const endpoint = new URL('/email', EMAIL_AGENT_URL).toString();
+  return {
+    slug: 'email-agent',
+    displayName: 'Email Agent',
+    channel: 'email',
+    mode: 'dispatch',
+    taskTypes: ['email.send'],
+    dispatch: buildDispatchExecutor(
+      { slug: 'email-agent' },
+      {
+        endpoint,
+        dispatch: {
+          method: 'POST',
+          includeTask: true,
+          expectJson: true
+        }
+      }
+    ),
+    metadata: { description: 'Outbound email dispatch' },
+    source: 'env'
+  };
+}
+
+const CONTENT_AGENT_URL = process.env.CONTENT_AGENT_URL;
+function createContentDispatchHandler() {
+  if (!CONTENT_AGENT_URL) return null;
+  const endpoint = new URL('/generate', CONTENT_AGENT_URL).toString();
+  return {
+    slug: 'content-agent',
+    displayName: 'Content Agent',
+    channel: 'content',
+    mode: 'dispatch',
+    taskTypes: ['content.generate'],
+    dispatch: buildDispatchExecutor(
+      { slug: 'content-agent' },
+      {
+        endpoint,
+        dispatch: {
+          method: 'POST',
+          includeTask: true,
+          expectJson: true
+        }
+      }
+    ),
+    metadata: { description: 'Rich content generation' },
+    source: 'env'
+  };
+}
+
 function createHandlerFromAgentRow(row) {
   try {
     const config = row.config || {};
@@ -111,6 +204,7 @@ function createHandlerFromAgentRow(row) {
     const dispatchConfig = mode === 'dispatch' ? buildDispatchExecutor(row, config) : null;
 
     return {
+      id: row.id,
       slug: row.slug,
       displayName: row.display_name,
       channel: row.channel,

@@ -44,6 +44,7 @@ This guide walks operators and developers through a repeatable manual regression
    - Internal services (orchestrator, logging, echo, renderctl) pass both health and config checks.
    - External integrations (Twilio, HubSpot, OpenAI, Google) report `OK` when valid credentials/API keys are configured, or surface actionable warnings/errors otherwise.
 7. Confirm settings persist after page refresh (localStorage).
+8. (Optional) Run `npm run test:connectivity` from the monorepo root to automate the internal/external API checks using the current environment variables.
 
 ## 7. Render Control Regression
 1. List services via `GET /render/services` and confirm metadata reflects Render dashboard state (IDs, names, status).
