@@ -90,6 +90,12 @@ body {
   margin-bottom: 1.1rem;
 }
 
+.card-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
 .card-header h2 {
   margin: 0;
   font-size: 1.2rem;

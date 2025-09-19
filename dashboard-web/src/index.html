@@ -174,7 +174,10 @@
           <article class="card" id="debug-card">
             <header class="card-header">
               <h2>Diagnostics Log</h2>
-              <button type="button" class="ghost" id="clear-logs">Clear</button>
+              <div class="card-actions">
+                <button type="button" class="ghost" id="copy-logs">Copy All</button>
+                <button type="button" class="ghost" id="clear-logs">Clear</button>
+              </div>
             </header>
             <div id="log-output" class="log-output">
               Run connectivity or other actions to populate debug logs here.

@@ -39,7 +39,8 @@ const elements = {
   runConnectivity: document.getElementById('run-connectivity'),
   connectivityResults: document.getElementById('connectivity-results'),
   logOutput: document.getElementById('log-output'),
-  clearLogs: document.getElementById('clear-logs')
+  clearLogs: document.getElementById('clear-logs'),
+  copyLogs: document.getElementById('copy-logs')
 };
 
 const state = {
@@ -93,6 +94,7 @@ elements.runConnectivity?.addEventListener('click', () => {
   runConnectivityCheck();
 });
 elements.clearLogs?.addEventListener('click', clearLogs);
+elements.copyLogs?.addEventListener('click', copyLogs);
 
 function onSettingsSubmit(event) {
   event.preventDefault();
@@ -1053,6 +1055,43 @@ function clearLogs() {
   renderLogs('Logs cleared.');
 }
 
+function copyLogs() {
+  if (!state.logs.length) {
+    appendLog('info', 'Diagnostics', 'No logs to copy.');
+    return;
+  }
+
+  const text = state.logs
+    .slice()
+    .reverse()
+    .map(formatLogLine)
+    .join('\n\n');
+
+  const write = async () => {
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      await navigator.clipboard.writeText(text);
+    } else {
+      const textarea = document.createElement('textarea');
+      textarea.value = text;
+      textarea.setAttribute('readonly', '');
+      textarea.style.position = 'absolute';
+      textarea.style.left = '-9999px';
+      document.body.appendChild(textarea);
+      textarea.select();
+      document.execCommand('copy');
+      document.body.removeChild(textarea);
+    }
+  };
+
+  write()
+    .then(() => {
+      appendLog('info', 'Diagnostics', 'Diagnostics log copied to clipboard.');
+    })
+    .catch((err) => {
+      appendLog('error', 'Diagnostics', 'Failed to copy diagnostics log', err?.message || String(err));
+    });
+}
+
 function renderLogs(message) {
   const container = elements.logOutput;
   if (!container) return;
@@ -1082,6 +1121,12 @@ function renderLogs(message) {
 
   container.innerHTML = html;
   container.scrollTop = container.scrollHeight;
+}
+
+function formatLogLine(entry) {
+  const ts = formatTimestamp(entry.ts);
+  const detail = entry.detail ? `\n  ${entry.detail}` : '';
+  return `${ts} [${entry.level.toUpperCase()}] ${entry.scope} - ${entry.message}${detail}`;
 }
 
 function buildActivityEntry(type, ts, summary, data) {
