@@ -709,6 +709,27 @@ async function runConnectivityCheck() {
 
         appendLog('info', integration.name, 'Checking API credentials');
         try {
+          // Prefer orchestrator proxy endpoints if available
+          if (orchestratorClient && settings.orchestratorUrl) {
+            const base = settings.orchestratorUrl;
+            const path = `/integrations/${integration.key}`;
+            const payload = await fetchJsonish(base, path);
+            if (payload && payload.json && payload.data && typeof payload.data === 'object') {
+              const outcome = payload.data;
+              const overall = outcome.overall || 'ok';
+              const checks = Array.isArray(outcome.checks) ? outcome.checks : [];
+              const logLevel = overall === 'ok' ? 'info' : overall === 'warn' ? 'warn' : 'error';
+              appendLog(logLevel, integration.name, `Check completed with status ${overall.toUpperCase()}.`);
+              return {
+                name: integration.name,
+                overall,
+                checks,
+                category: 'integration'
+              };
+            }
+          }
+
+          // Fallback: run client-side direct check
           const outcome = await integration.run();
           const overall = outcome.overall || 'ok';
           const checks = outcome.checks || [];
