@@ -88,6 +88,20 @@ export function createApiClient({ baseUrl, username, password }) {
       return request(path);
     },
 
+    async fetchTaskEvents(params = {}) {
+      const search = new URLSearchParams();
+      if (params.taskId) search.set('taskId', params.taskId);
+      if (params.traceId) search.set('traceId', params.traceId);
+      if (params.corrId) search.set('corrId', params.corrId);
+      if (params.actor) search.set('actor', params.actor);
+      if (params.kind) search.set('kind', params.kind);
+      if (params.since) search.set('since', params.since);
+      if (params.limit) search.set('limit', String(params.limit));
+      const query = search.toString();
+      const path = query ? `/task/events?${query}` : '/task/events';
+      return request(path);
+    },
+
     openWebsocket({ wsUrl, onMessage }) {
       if (!wsUrl) throw new Error('wsUrl is required');
       const socket = new WebSocket(wsUrl);

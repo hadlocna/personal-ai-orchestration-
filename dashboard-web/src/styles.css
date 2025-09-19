@@ -592,6 +592,58 @@ tr.empty td {
   margin-right: 0.5rem;
 }
 
+.db-snapshot {
+  display: grid;
+  gap: 1rem;
+}
+
+.db-section {
+  background: rgba(15, 23, 42, 0.55);
+  border-radius: 12px;
+  border: 1px solid rgba(148, 163, 184, 0.12);
+  padding: 0.75rem;
+}
+
+.db-section header {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  margin-bottom: 0.4rem;
+}
+
+.db-section header h3 {
+  margin: 0;
+  font-size: 1rem;
+}
+
+.db-section header span {
+  color: var(--text-muted);
+  font-size: 0.8rem;
+}
+
+.db-list {
+  margin: 0;
+  padding-left: 1.1rem;
+  font-size: 0.85rem;
+  color: var(--text-muted);
+}
+
+.db-list li {
+  margin: 0.25rem 0;
+}
+
+.db-empty {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 0.85rem;
+}
+
+.db-meta {
+  margin: 0.4rem 0 0;
+  color: var(--text-muted);
+  font-size: 0.8rem;
+}
+
 @media (max-width: 720px) {
   .top-bar {
     flex-direction: column;

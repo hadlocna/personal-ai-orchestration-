@@ -40,7 +40,9 @@ const elements = {
   connectivityResults: document.getElementById('connectivity-results'),
   logOutput: document.getElementById('log-output'),
   clearLogs: document.getElementById('clear-logs'),
-  copyLogs: document.getElementById('copy-logs')
+  copyLogs: document.getElementById('copy-logs'),
+  dbSnapshot: document.getElementById('db-snapshot'),
+  refreshDbSnapshot: document.getElementById('refresh-db-snapshot')
 };
 
 const state = {
@@ -56,7 +58,15 @@ const state = {
     lastRun: null,
     error: null
   },
-  logs: []
+  logs: [],
+  dbSnapshot: {
+    loading: false,
+    error: null,
+    tasks: [],
+    logs: [],
+    events: [],
+    lastUpdated: null
+  }
 };
 
 let settings = loadSettings();
@@ -73,6 +83,7 @@ renderConfigReports();
 renderSummary();
 renderConnectivity();
 renderLogs();
+renderDatabaseSnapshot();
 
 if (settings.orchestratorUrl) {
   initializeConnections();
@@ -95,6 +106,7 @@ elements.runConnectivity?.addEventListener('click', () => {
 });
 elements.clearLogs?.addEventListener('click', clearLogs);
 elements.copyLogs?.addEventListener('click', copyLogs);
+elements.refreshDbSnapshot?.addEventListener('click', refreshDatabaseSnapshot);
 
 function onSettingsSubmit(event) {
   event.preventDefault();
@@ -232,12 +244,21 @@ function clearStoredSettings() {
   state.selectedTaskDetail = null;
   state.selectedTaskId = null;
   state.connectivity = { running: false, results: [], lastRun: null, error: null };
+  state.dbSnapshot = {
+    loading: false,
+    error: null,
+    tasks: [],
+    logs: [],
+    events: [],
+    lastUpdated: null
+  };
   renderSummary();
   renderTaskTable();
   renderTaskDetail();
   renderActivity();
   renderConfigReports();
   renderConnectivity('Provide service URLs above to run connectivity checks.');
+  renderDatabaseSnapshot('Connect to load database state.');
   appendLog('info', 'Settings', 'Connections reset to defaults.');
   setConnectionStatus('disconnected', 'Disconnected');
 }
@@ -287,6 +308,7 @@ async function initializeConnections() {
 
   await Promise.allSettled([refreshTasks(), refreshActivity(), refreshConfig()]);
   await runConnectivityCheck();
+  await refreshDatabaseSnapshot();
   connectWebsocket();
 }
 
@@ -414,6 +436,82 @@ async function refreshConfig() {
 
   state.configReports = reports;
   renderConfigReports();
+}
+
+async function refreshDatabaseSnapshot() {
+  if (!orchestratorClient && !loggingClient) {
+    state.dbSnapshot = {
+      loading: false,
+      error: 'Connect to orchestrator and logging services to inspect persisted records.',
+      tasks: [],
+      logs: [],
+      events: [],
+      lastUpdated: null
+    };
+    renderDatabaseSnapshot();
+    appendLog('warn', 'Database Snapshot', 'Skipped snapshot refresh because API clients are not connected.');
+    return;
+  }
+
+  state.dbSnapshot.loading = true;
+  state.dbSnapshot.error = null;
+  renderDatabaseSnapshot();
+  appendLog('info', 'Database Snapshot', 'Fetching latest persisted records.');
+
+  const tasksPromise = orchestratorClient
+    ? orchestratorClient.listTasks({ limit: 5 })
+    : Promise.resolve({ tasks: [] });
+  const logsPromise = loggingClient
+    ? loggingClient.fetchLogs({ limit: 5 })
+    : Promise.resolve({ logs: [] });
+  const eventsPromise = loggingClient
+    ? loggingClient.fetchTaskEvents({ limit: 5 })
+    : Promise.resolve({ events: [] });
+
+  const [tasksResult, logsResult, eventsResult] = await Promise.allSettled([
+    tasksPromise,
+    logsPromise,
+    eventsPromise
+  ]);
+
+  const snapshot = state.dbSnapshot;
+  snapshot.loading = false;
+  snapshot.lastUpdated = new Date().toISOString();
+
+  const errors = [];
+
+  if (tasksResult.status === 'fulfilled') {
+    snapshot.tasks = Array.isArray(tasksResult.value?.tasks) ? tasksResult.value.tasks : [];
+  } else {
+    snapshot.tasks = [];
+    errors.push(`tasks: ${inferNetworkError(tasksResult.reason)}`);
+    appendLog('error', 'Database Snapshot', 'Failed to fetch tasks snapshot', inferNetworkError(tasksResult.reason));
+  }
+
+  if (logsResult.status === 'fulfilled') {
+    snapshot.logs = Array.isArray(logsResult.value?.logs) ? logsResult.value.logs : [];
+  } else {
+    snapshot.logs = [];
+    errors.push(`logs: ${inferNetworkError(logsResult.reason)}`);
+    appendLog('error', 'Database Snapshot', 'Failed to fetch logs snapshot', inferNetworkError(logsResult.reason));
+  }
+
+  if (eventsResult.status === 'fulfilled') {
+    snapshot.events = Array.isArray(eventsResult.value?.events) ? eventsResult.value.events : [];
+  } else {
+    snapshot.events = [];
+    errors.push(`task events: ${inferNetworkError(eventsResult.reason)}`);
+    appendLog('error', 'Database Snapshot', 'Failed to fetch task events snapshot', inferNetworkError(eventsResult.reason));
+  }
+
+  if (errors.length) {
+    snapshot.error = `One or more queries failed: ${errors.join('; ')}`;
+  } else {
+    snapshot.error = null;
+    appendLog('info', 'Database Snapshot', 'Snapshot refreshed successfully.');
+  }
+
+  renderDatabaseSnapshot();
 }
 
 async function runConnectivityCheck() {
@@ -1127,6 +1225,86 @@ function formatLogLine(entry) {
   const ts = formatTimestamp(entry.ts);
   const detail = entry.detail ? `\n  ${entry.detail}` : '';
   return `${ts} [${entry.level.toUpperCase()}] ${entry.scope} - ${entry.message}${detail}`;
+}
+
+function renderDatabaseSnapshot(message) {
+  const container = elements.dbSnapshot;
+  if (!container) return;
+
+  if (message) {
+    container.textContent = message;
+    return;
+  }
+
+  const snapshot = state.dbSnapshot;
+  if (snapshot.loading) {
+    container.textContent = 'Loading latest records...';
+    return;
+  }
+
+  if (snapshot.error) {
+    container.textContent = snapshot.error;
+    return;
+  }
+
+  const hasData = snapshot.tasks.length || snapshot.logs.length || snapshot.events.length;
+  if (!hasData) {
+    container.textContent = 'No records returned yet. Queue a task or emit logs to populate the database.';
+    return;
+  }
+
+  const sections = [];
+  sections.push(renderDbSection('Tasks', snapshot.tasks, renderTaskRecord));
+  sections.push(renderDbSection('Logs', snapshot.logs, renderLogRecord));
+  sections.push(renderDbSection('Task Events', snapshot.events, renderEventRecord));
+
+  const meta = snapshot.lastUpdated
+    ? `<p class="db-meta">Last checked ${escapeHtml(formatTimestamp(snapshot.lastUpdated))}</p>`
+    : '';
+
+  container.innerHTML = `${sections.join('')}${meta}`;
+}
+
+function renderDbSection(title, records, renderItem) {
+  if (!records || !records.length) {
+    return `
+      <div class="db-section">
+        <header><h3>${escapeHtml(title)}</h3><span>0 records</span></header>
+        <p class="db-empty">No records found.</p>
+      </div>
+    `;
+  }
+
+  const items = records.map((record) => `<li>${renderItem(record)}</li>`).join('');
+  return `
+    <div class="db-section">
+      <header><h3>${escapeHtml(title)}</h3><span>${records.length} shown</span></header>
+      <ol class="db-list">${items}</ol>
+    </div>
+  `;
+}
+
+function renderTaskRecord(task) {
+  const id = task?.id ? shortId(task.id) : 'n/a';
+  const status = task?.status || 'unknown';
+  const updated = task?.updated_at || task?.created_at || null;
+  const ts = updated ? formatTimestamp(updated) : 'unknown time';
+  return `${escapeHtml(id)} • ${escapeHtml(status)} • ${escapeHtml(ts)}`;
+}
+
+function renderLogRecord(log) {
+  const service = log?.service || 'unknown';
+  const level = (log?.level || 'info').toUpperCase();
+  const message = log?.message || '(no message)';
+  const ts = formatTimestamp(log?.ts_utc || log?.ts || log?.created_at);
+  return `${escapeHtml(service)} • ${escapeHtml(level)} • ${escapeHtml(ts)} • ${escapeHtml(message)}`;
+}
+
+function renderEventRecord(event) {
+  const taskId = event?.task_id ? shortId(event.task_id) : 'n/a';
+  const kind = event?.kind || 'event';
+  const ts = formatTimestamp(event?.ts_utc || event?.ts || event?.created_at);
+  return `${escapeHtml(taskId)} • ${escapeHtml(kind)} • ${escapeHtml(ts)}`;
 }
 
 function buildActivityEntry(type, ts, summary, data) {
