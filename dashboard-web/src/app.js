@@ -2,6 +2,15 @@ import { createApiClient, encodeBasicAuth } from './api/client.js';
 
 const STORAGE_KEY = 'paio-dashboard-settings';
 const MAX_ACTIVITY_ENTRIES = 200;
+const DEFAULT_SETTINGS = Object.freeze({
+  orchestratorUrl: 'https://personal-ai-orchestration.onrender.com',
+  websocketUrl: '',
+  loggingUrl: 'https://logging-svc.onrender.com',
+  echoUrl: 'https://echo-agent-svc.onrender.com',
+  renderctlUrl: 'https://renderctl-svc.onrender.com',
+  username: '',
+  password: ''
+});
 
 const elements = {
   connectionStatus: document.getElementById('connection-status'),
@@ -168,51 +177,27 @@ async function onNewTaskSubmit(event) {
 
 function loadSettings() {
   if (typeof localStorage === 'undefined') {
-    return {
-      orchestratorUrl: '',
-      websocketUrl: '',
-      loggingUrl: '',
-      echoUrl: '',
-      renderctlUrl: '',
-      username: '',
-      password: ''
-    };
+    return { ...DEFAULT_SETTINGS };
   }
 
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) {
-      return {
-        orchestratorUrl: '',
-        websocketUrl: '',
-        loggingUrl: '',
-        echoUrl: '',
-        renderctlUrl: '',
-        username: '',
-        password: ''
-      };
+      return { ...DEFAULT_SETTINGS };
     }
     const parsed = JSON.parse(raw);
     return {
-      orchestratorUrl: parsed.orchestratorUrl || '',
-      websocketUrl: parsed.websocketUrl || '',
-      loggingUrl: parsed.loggingUrl || '',
-      echoUrl: parsed.echoUrl || '',
-      renderctlUrl: parsed.renderctlUrl || '',
-      username: parsed.username || '',
-      password: parsed.password || ''
+      orchestratorUrl: parsed.orchestratorUrl || DEFAULT_SETTINGS.orchestratorUrl,
+      websocketUrl: parsed.websocketUrl || DEFAULT_SETTINGS.websocketUrl,
+      loggingUrl: parsed.loggingUrl || DEFAULT_SETTINGS.loggingUrl,
+      echoUrl: parsed.echoUrl || DEFAULT_SETTINGS.echoUrl,
+      renderctlUrl: parsed.renderctlUrl || DEFAULT_SETTINGS.renderctlUrl,
+      username: parsed.username || DEFAULT_SETTINGS.username,
+      password: parsed.password || DEFAULT_SETTINGS.password
     };
   } catch (err) {
     console.warn('Failed to load stored settings', err);
-    return {
-      orchestratorUrl: '',
-      websocketUrl: '',
-      loggingUrl: '',
-      echoUrl: '',
-      renderctlUrl: '',
-      username: '',
-      password: ''
-    };
+    return { ...DEFAULT_SETTINGS };
   }
 }
 
@@ -229,15 +214,7 @@ function clearStoredSettings() {
   if (typeof localStorage !== 'undefined') {
     localStorage.removeItem(STORAGE_KEY);
   }
-  settings = {
-    orchestratorUrl: '',
-    websocketUrl: '',
-    loggingUrl: '',
-    echoUrl: '',
-    renderctlUrl: '',
-    username: '',
-    password: ''
-  };
+  settings = { ...DEFAULT_SETTINGS };
   applySettingsToForm(settings);
   disconnectWebsocket();
   orchestratorClient = null;
