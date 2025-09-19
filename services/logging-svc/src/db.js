@@ -57,6 +57,7 @@ async function initDb() {
     await client.query('CREATE INDEX IF NOT EXISTS idx_logs_corr ON logs(correlation_id)');
     await client.query('CREATE INDEX IF NOT EXISTS idx_logs_trace ON logs(trace_id)');
     await client.query('CREATE INDEX IF NOT EXISTS idx_task_events_task_ts ON task_events(task_id, ts_utc DESC)');
+    await client.query('CREATE INDEX IF NOT EXISTS idx_task_events_corr ON task_events(correlation_id)');
     await client.query('CREATE INDEX IF NOT EXISTS idx_task_events_trace ON task_events(trace_id)');
 
     await client.query('COMMIT');

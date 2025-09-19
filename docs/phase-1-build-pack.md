@@ -13,6 +13,8 @@
 - ✅ Service implementations (orchestrator, logging, echo agent) using the shared config package.
 - ✅ Dashboard views (activity stream, task table, config inspector).
 - ✅ renderctl service endpoints for Render automation.
+- ✅ Postgres bootstrap + migration definitions kept in sync (tasks/logs/events schema with trace + correlation indices).
+- ✅ Render blueprint enumerates dashboard + service deployments for renderctl reconciliation.
 
 ## Deliverables & Tasks
 1. **Monorepo Foundations** *(done)*
@@ -20,15 +22,17 @@
    - `.env.example` enumerating all required keys (ensure secrets remain sample-only).
    - `infra/config.schema.json` maintained as single source of truth.
 
-2. **Auth Everywhere** *(in progress)*
+2. **Auth Everywhere** *(done)*
    - Basic Auth middleware for human endpoints (`BASIC_AUTH_USER/PASS`).
    - `X-INTERNAL-KEY` checks for inter-service calls.
+   - WebSocket upgrades enforce Basic Auth or internal key before accepting connections.
+   - Dashboard websocket clients append `?auth=base64(user:pass)` to satisfy the handshake.
    - Shared helpers in `packages/common` to avoid duplication.
 
-3. **Configuration Discipline**
+3. **Configuration Discipline** *(done)*
    - Boot-time `ensureConfig()` in every service; fail fast on missing env vars.
    - `/config/validate` endpoint leveraging `buildConfigReport()`.
-   - Config doctor CLI command per service (`npm run config:doctor`).
+   - Config doctor CLI command per service (`npm run config:doctor` in each workspace, now exposed via package scripts).
 
 4. **Persistent Task Engine**
    - Author migrations for `tasks`, `task_events`, `logs`, optionally `agent_heartbeats`.
@@ -54,7 +58,7 @@
 
 8. **Ops & QA**
    - ✅ Local dev scripts to run services (npm scripts or docker-compose) via `npm run dev:services` (Codex agent, 2025-09-18).
-   - Seed data + sample payloads for smoke testing (`examples/` folder optional).
+   - ✅ Seed data + sample payloads for smoke testing (`examples/`, `npm run seed:examples`) (Codex agent, 2025-09-18).
    - ✅ Document manual test plan in `docs/testing.md` (Codex agent, 2025-09-18).
 
 ## Milestones & Sequencing
@@ -76,4 +80,4 @@
 - Log entries and task events persist in Postgres and stream live over WebSocket.
 - Render environments can be created/updated via renderctl (no manual secret copying).
 
-_Last updated: 2025-09-18_
+_Last updated: 2025-09-19_

@@ -1,6 +1,66 @@
 version: "1"
 
 services:
+  - name: orchestrator-svc
+    type: web_service
+    plan: starter
+    serviceDetails:
+      runtime: node
+      buildCommand: npm install
+      startCommand: node services/orchestrator-svc/src/index.js
+      autoDeploy: true
+    env:
+      BASIC_AUTH_USER: __REPLACE__
+      BASIC_AUTH_PASS: __REPLACE__
+      INTERNAL_KEY: __REPLACE__
+      POSTGRES_URL: __REPLACE__
+      LOGGING_URL: __REPLACE__
+      ECHO_AGENT_URL: __REPLACE__
+      WS_ALLOWED_ORIGINS: __REPLACE__
+
+  - name: logging-svc
+    type: web_service
+    plan: starter
+    serviceDetails:
+      runtime: node
+      buildCommand: npm install
+      startCommand: node services/logging-svc/src/index.js
+      autoDeploy: true
+    env:
+      BASIC_AUTH_USER: __REPLACE__
+      BASIC_AUTH_PASS: __REPLACE__
+      INTERNAL_KEY: __REPLACE__
+      POSTGRES_URL: __REPLACE__
+
+  - name: echo-agent-svc
+    type: web_service
+    plan: starter
+    serviceDetails:
+      runtime: node
+      buildCommand: npm install
+      startCommand: node services/echo-agent-svc/src/index.js
+      autoDeploy: true
+    env:
+      BASIC_AUTH_USER: __REPLACE__
+      BASIC_AUTH_PASS: __REPLACE__
+      INTERNAL_KEY: __REPLACE__
+      LOGGING_URL: __REPLACE__
+
+  - name: renderctl-svc
+    type: web_service
+    plan: starter
+    serviceDetails:
+      runtime: node
+      buildCommand: npm install
+      startCommand: node services/renderctl-svc/src/index.js
+      autoDeploy: false
+    env:
+      BASIC_AUTH_USER: __REPLACE__
+      BASIC_AUTH_PASS: __REPLACE__
+      INTERNAL_KEY: __REPLACE__
+      RENDER_API_TOKEN: __REPLACE__
+      RENDER_API_BASE_URL: https://api.render.com/v1
+
   - name: dashboard-web
     type: static_site
     plan: starter

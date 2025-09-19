@@ -51,9 +51,17 @@ async function initDb() {
         ts_utc TIMESTAMPTZ NOT NULL DEFAULT now(),
         actor TEXT NOT NULL,
         kind TEXT NOT NULL,
-        data JSONB
+        data JSONB,
+        correlation_id TEXT,
+        trace_id TEXT
       )
     `);
+
+    await client.query('ALTER TABLE task_events ADD COLUMN IF NOT EXISTS correlation_id TEXT');
+    await client.query('ALTER TABLE task_events ADD COLUMN IF NOT EXISTS trace_id TEXT');
+    await client.query('CREATE INDEX IF NOT EXISTS idx_task_events_task_ts ON task_events(task_id, ts_utc DESC)');
+    await client.query('CREATE INDEX IF NOT EXISTS idx_task_events_corr ON task_events(correlation_id)');
+    await client.query('CREATE INDEX IF NOT EXISTS idx_task_events_trace ON task_events(trace_id)');
 
     await client.query(`
       CREATE TABLE IF NOT EXISTS agent_heartbeats (
@@ -96,7 +104,9 @@ async function createTask({ type, payload, source, correlationId, traceId, actor
         type,
         source,
         correlationId: correlationId || null
-      }
+      },
+      correlationId: correlationId || null,
+      traceId
     });
 
     await client.query('COMMIT');
@@ -195,7 +205,9 @@ async function applyTaskPatch({ id, ifVersion, patch, event }) {
         taskId: id,
         actor: event.actor,
         kind: event.kind,
-        data: event.data || null
+        data: event.data || null,
+        correlationId: task.correlation_id,
+        traceId: task.trace_id
       });
     }
 
@@ -255,12 +267,20 @@ function buildPatchQuery({ id, ifVersion, patch }) {
   return { query, values };
 }
 
-async function insertTaskEvent(client, { taskId, actor, kind, data }) {
+async function insertTaskEvent(client, { taskId, actor, kind, data, correlationId, traceId }) {
   const { rows } = await client.query(
-    `INSERT INTO task_events (id, task_id, actor, kind, data)
-     VALUES ($1, $2, $3, $4, $5::jsonb)
-     RETURNING id, task_id, actor, kind, data, ts_utc`,
-    [uuidv4(), taskId, actor, kind, data ? JSON.stringify(data) : null]
+    `INSERT INTO task_events (id, task_id, actor, kind, data, correlation_id, trace_id)
+     VALUES ($1, $2, $3, $4, $5::jsonb, $6, $7)
+     RETURNING id, task_id, actor, kind, data, ts_utc, correlation_id, trace_id`,
+    [
+      uuidv4(),
+      taskId,
+      actor,
+      kind,
+      data ? JSON.stringify(data) : null,
+      correlationId || null,
+      traceId || null
+    ]
   );
   return rows[0];
 }

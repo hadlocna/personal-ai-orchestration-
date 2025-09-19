@@ -21,10 +21,10 @@ CREATE TABLE IF NOT EXISTS tasks (
     version INTEGER NOT NULL DEFAULT 0
 );
 
-CREATE INDEX IF NOT EXISTS idx_tasks_updated_at ON tasks (updated_at DESC);
+CREATE INDEX IF NOT EXISTS idx_tasks_updated ON tasks (updated_at DESC);
 CREATE INDEX IF NOT EXISTS idx_tasks_status ON tasks (status);
-CREATE INDEX IF NOT EXISTS idx_tasks_correlation_id ON tasks (correlation_id);
-CREATE INDEX IF NOT EXISTS idx_tasks_trace_id ON tasks (trace_id);
+CREATE INDEX IF NOT EXISTS idx_tasks_corr ON tasks (correlation_id);
+CREATE INDEX IF NOT EXISTS idx_tasks_trace ON tasks (trace_id);
 
 CREATE TABLE IF NOT EXISTS task_events (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -33,28 +33,30 @@ CREATE TABLE IF NOT EXISTS task_events (
     actor TEXT NOT NULL,
     kind TEXT NOT NULL,
     data JSONB,
-    note TEXT
+    correlation_id TEXT,
+    trace_id TEXT
 );
 
-CREATE INDEX IF NOT EXISTS idx_task_events_task_id ON task_events (task_id);
-CREATE INDEX IF NOT EXISTS idx_task_events_ts ON task_events (ts_utc DESC);
+CREATE INDEX IF NOT EXISTS idx_task_events_task_ts ON task_events (task_id, ts_utc DESC);
+CREATE INDEX IF NOT EXISTS idx_task_events_corr ON task_events (correlation_id);
+CREATE INDEX IF NOT EXISTS idx_task_events_trace ON task_events (trace_id);
 
 CREATE TABLE IF NOT EXISTS logs (
-    id BIGSERIAL PRIMARY KEY,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    ts_utc TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     service TEXT NOT NULL,
     level TEXT NOT NULL,
-    message TEXT,
+    message TEXT NOT NULL,
     data JSONB,
-    trace_id TEXT,
+    task_id UUID,
     correlation_id TEXT,
-    task_id UUID
+    trace_id TEXT
 );
 
-CREATE INDEX IF NOT EXISTS idx_logs_created_at ON logs (created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_logs_ts ON logs (ts_utc DESC);
 CREATE INDEX IF NOT EXISTS idx_logs_service ON logs (service);
-CREATE INDEX IF NOT EXISTS idx_logs_trace_id ON logs (trace_id);
-CREATE INDEX IF NOT EXISTS idx_logs_correlation_id ON logs (correlation_id);
+CREATE INDEX IF NOT EXISTS idx_logs_corr ON logs (correlation_id);
+CREATE INDEX IF NOT EXISTS idx_logs_trace ON logs (trace_id);
 
 CREATE TABLE IF NOT EXISTS agent_heartbeats (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),

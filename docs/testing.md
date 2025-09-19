@@ -13,7 +13,7 @@ This guide walks operators and developers through a repeatable manual regression
 1. For each service (`orchestrator-svc`, `logging-svc`, `echo-agent-svc`, `renderctl-svc`):
    - Call `GET /config/validate` with Basic Auth. Expect `status: "ok"` and no missing keys.
    - Call `GET /health`. Expect HTTP 200 with `status: "ok"`.
-2. Run `npm run config:doctor --workspace @repo/orchestrator-svc` (and equivalent for other services). Expect success output without missing keys.
+2. Run `npm run --workspace @repo/orchestrator-svc config:doctor` (and equivalent for other services). Expect success output without missing keys.
 
 ## 3. Logging Service Regression
 1. `POST /log` with a sample payload (`{ level: "info", service: "manual-test", message: "ping", payload: { marker: "test" } }`). Expect HTTP 202.
@@ -46,8 +46,9 @@ This guide walks operators and developers through a repeatable manual regression
 1. List services via `GET /render/services` and confirm metadata reflects Render dashboard state (IDs, names, status).
 2. Trigger a deploy with `POST /render/deploy/<serviceId>` on a non-critical service; watch Render dashboard for the manual deploy event.
 3. Blueprint dry run: `POST /render/blueprint/apply` with `{ "dryRun": true }` and verify the diff output matches expectations without applying changes.
-4. (Optional) Validate the static-site auto-remediation: intentionally break `dashboard-web` build settings on Render, wait for monitor to patch and redeploy, then revert.
-5. Operator CLI sanity: run `node scripts/render-status.js --json` and `node scripts/renderctl-ops.js list` (with `RENDERCTL_URL` + auth envs exported) to confirm renderctl responds end-to-end.
+4. Before a non-dry-run apply, replace every `__REPLACE__` placeholder in `infra/render.blueprint.yaml` with real credentials/secrets to avoid clobbering environments with dummy values.
+5. (Optional) Validate the static-site auto-remediation: intentionally break `dashboard-web` build settings on Render, wait for monitor to patch and redeploy, then revert.
+6. Operator CLI sanity: run `node scripts/render-status.js --json` and `node scripts/renderctl-ops.js list` (with `RENDERCTL_URL` + auth envs exported) to confirm renderctl responds end-to-end.
 
 ## 8. Smoke Script (Optional)
 - Execute `npm run test:smoke` with environment variables `ORCHESTRATOR_URL`, `LOGGING_URL`, `BASIC_AUTH_USER`, and `BASIC_AUTH_PASS`. Expect the script to queue an echo task, await completion, and exit with code 0.
@@ -56,4 +57,4 @@ This guide walks operators and developers through a repeatable manual regression
 - Record test date, operator, commit SHA, and noted issues in the runbook or shared tracker.
 - Any deviation or failure should capture logs, request/response payloads, and Render deploy IDs for debugging.
 
-_Last updated: 2025-09-18_
+_Last updated: 2025-09-19_
