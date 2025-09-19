@@ -32,7 +32,11 @@ class HandlerRegistry {
       .map(createHandlerFromAgentRow)
       .filter(Boolean);
 
-    return new HandlerRegistry({ inlineHandlers, agents: agentHandlers });
+    const envHandlers = [];
+    const callHandler = createCallDispatchHandler();
+    if (callHandler) envHandlers.push(callHandler);
+
+    return new HandlerRegistry({ inlineHandlers, agents: [...agentHandlers, ...envHandlers] });
   }
 
   register(definition) {
@@ -78,6 +82,22 @@ function createEchoInlineHandler() {
       description: 'Development echo handler used for smoke tests.'
     },
     source: 'built-in'
+  };
+}
+
+const CALL_AGENT_URL = process.env.CALL_AGENT_URL;
+function createCallDispatchHandler() {
+  if (!CALL_AGENT_URL) return null;
+  const endpoint = new URL('/call', CALL_AGENT_URL).toString();
+  return {
+    slug: 'call-agent',
+    displayName: 'Call Agent',
+    channel: 'voice',
+    mode: 'dispatch',
+    taskTypes: ['call.start'],
+    dispatch: buildDispatchExecutor({ slug: 'call-agent' }, { endpoint, dispatch: { method: 'POST', includeTask: false } }),
+    metadata: { description: 'Outbound call dispatch' },
+    source: 'env'
   };
 }
 
