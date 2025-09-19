@@ -69,3 +69,20 @@ services:
       buildCommand: ./render-build.sh
       publishPath: dashboard-web/dist
     env: {}
+
+  - name: call-agent-svc
+    type: web_service
+    plan: starter
+    serviceDetails:
+      runtime: node
+      buildCommand: npm install
+      startCommand: node services/call-agent-svc/src/index.js
+      autoDeploy: true
+    env:
+      BASIC_AUTH_USER: __REPLACE__
+      BASIC_AUTH_PASS: __REPLACE__
+      INTERNAL_KEY: __REPLACE__
+      TWILIO_ACCOUNT_SID: __REPLACE__
+      TWILIO_AUTH_TOKEN: __REPLACE__
+      TWILIO_WEBHOOK_SECRET: __REPLACE__
+      TWILIO_API_BASE_URL: https://api.twilio.com

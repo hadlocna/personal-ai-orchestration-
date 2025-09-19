@@ -1,0 +1,19 @@
+{
+  "name": "call-agent-svc",
+  "version": "0.1.0",
+  "private": true,
+  "main": "src/index.js",
+  "license": "MIT",
+  "type": "commonjs",
+  "scripts": {
+    "start": "node src/index.js"
+  },
+  "dependencies": {
+    "@repo/common": "*",
+    "express": "^4.19.2",
+    "helmet": "^7.1.0",
+    "morgan": "^1.10.0"
+  }
+}
+
+
