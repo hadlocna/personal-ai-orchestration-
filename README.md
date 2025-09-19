@@ -15,10 +15,12 @@ Modular monorepo for a continuously running agent framework that coordinates out
 4. Hit `GET /config/validate` on any service—or run `npm run --workspace @repo/<service> config:doctor`—to confirm environment variables match `infra/config.schema.json`.
 5. Build Docker images from the repo root; each service Dockerfile expects the full monorepo context and executes `npm install --omit=dev` during build.
 6. Apply the baseline Postgres migration with `psql "$POSTGRES_URL" -f infra/migrations/0001_core_tables.sql` before running services that depend on persistence.
+7. Populate Phase 2 credentials (Twilio account + auth tokens, OpenAI key/model, new agent URLs, webhook secrets, and channel defaults) in `.env` so the upcoming communication services can pass config validation.
 
 ## Documentation
 - [`docs/product-requirements.md`](docs/product-requirements.md) — comprehensive PRD covering architecture, module specs, APIs, data model, security, and roadmap.
 - [`docs/phase-1-build-pack.md`](docs/phase-1-build-pack.md) — execution guide for Phase 1 with status, deliverables, milestones, and acceptance criteria.
+- [`docs/phase-2-build-pack.md`](docs/phase-2-build-pack.md) — roadmap and task list for the communications-focused Phase 2 rollout.
 - [`docs/testing.md`](docs/testing.md) — manual regression checklist spanning services, dashboard, and Render automation.
 
 ## Phase 1 Focus Areas

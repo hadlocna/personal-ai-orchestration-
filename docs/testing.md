@@ -13,7 +13,7 @@ This guide walks operators and developers through a repeatable manual regression
 1. For each service (`orchestrator-svc`, `logging-svc`, `echo-agent-svc`, `renderctl-svc`):
    - Call `GET /config/validate` with Basic Auth. Expect `status: "ok"` and no missing keys.
    - Call `GET /health`. Expect HTTP 200 with `status: "ok"`.
-2. Run `npm run --workspace @repo/orchestrator-svc config:doctor` (and equivalent for other services). Expect success output without missing keys.
+2. Run `npm run --workspace @repo/orchestrator-svc config:doctor` (and equivalent for other services). Expect success output without missing keys. Phase 2 agents should report all Twilio/OpenAI credentials, agent URLs, webhook secrets, and channel defaults as `present` before attempting multi-channel tests.
 
 ## 3. Logging Service Regression
 1. `POST /log` with a sample payload (`{ level: "info", service: "manual-test", message: "ping", payload: { marker: "test" } }`). Expect HTTP 202.
@@ -40,7 +40,10 @@ This guide walks operators and developers through a repeatable manual regression
 3. Verify the task summary counts match `GET /tasks` results.
 4. Use the dashboard form to queue an `echo` task. Observe live activity updates and confirm task detail view shows payload, result, and events.
 5. Run the Config Inspector once orchestrator, logging, echo, and renderctl URLs are set; verify all services report `status: ok`.
-6. Confirm settings persist after page refresh (localStorage).
+6. Trigger the Service Connectivity diagnostic and verify:
+   - Internal services (orchestrator, logging, echo, renderctl) pass both health and config checks.
+   - External integrations (Twilio, HubSpot, OpenAI, Google) report `OK` when valid credentials/API keys are configured, or surface actionable warnings/errors otherwise.
+7. Confirm settings persist after page refresh (localStorage).
 
 ## 7. Render Control Regression
 1. List services via `GET /render/services` and confirm metadata reflects Render dashboard state (IDs, names, status).
