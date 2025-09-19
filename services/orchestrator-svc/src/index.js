@@ -23,14 +23,17 @@ const {
 } = require('./db');
 const { setupWebsocket } = require('./websocket');
 const { startLogForwarder } = require('./log-forwarder');
-const {
-  registerDefaultAgents,
-  findAgentForType,
-  AgentDispatchStatus
-} = require('./agent-registry');
+const { HandlerRegistry } = require('./handler-registry');
 
 const SERVICE_NAME = 'orchestrator-svc';
 const PORT = process.env.PORT || 4000;
+
+const AgentDispatchStatus = {
+  DEFERRED: 'deferred',
+  COMPLETED: 'completed'
+};
+
+let handlerRegistry = null;
 
 async function createService() {
   try {
@@ -41,7 +44,7 @@ async function createService() {
   }
 
   await initDb();
-  registerDefaultAgents();
+  handlerRegistry = await HandlerRegistry.build();
 
   const app = express();
   const server = http.createServer(app);
@@ -360,7 +363,10 @@ async function processTask(task, { wsHub, logger }) {
       });
     }
 
-    agent = findAgentForType(task.type);
+    if (!handlerRegistry) {
+      handlerRegistry = await HandlerRegistry.build();
+    }
+    agent = handlerRegistry.resolve(task.type);
     if (!agent) {
       throw new Error(`UNSUPPORTED_TYPE:${task.type}`);
     }
@@ -383,16 +389,23 @@ async function processTask(task, { wsHub, logger }) {
       correlationId: runningTask.correlation_id
     });
 
-    const agentResponse = await agent.dispatch({
-      task: runningTask,
-      logger,
-      emitTaskEvent: (event) => emitAgentEvent({
+    let agentResponse;
+    if (agent.mode === 'inline' && typeof agent.execute === 'function') {
+      agentResponse = await agent.execute({ task: runningTask, logger });
+    } else if (typeof agent.dispatch === 'function') {
+      agentResponse = await agent.dispatch({
+        task: runningTask,
         logger,
-        baseTask: runningTask,
-        agent,
-        event
-      })
-    });
+        emitTaskEvent: (event) => emitAgentEvent({
+          logger,
+          baseTask: runningTask,
+          agent,
+          event
+        })
+      });
+    } else {
+      throw new Error(`Agent for ${task.type} does not implement execute/dispatch`);
+    }
 
     const normalized = normalizeAgentResponse(agentResponse);
 
