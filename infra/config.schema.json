@@ -42,7 +42,11 @@
     "HUBSPOT_ACCESS_TOKEN": { "type": "string" },
     "HUBSPOT_BASE_URL": { "type": "string", "format": "uri" },
     "GOOGLE_API_KEY": { "type": "string" },
-    "GOOGLE_API_BASE_URL": { "type": "string", "format": "uri" }
+    "GOOGLE_API_BASE_URL": { "type": "string", "format": "uri" },
+    "GOOGLE_OAUTH_CLIENT_ID": { "type": "string" },
+    "GOOGLE_OAUTH_CLIENT_SECRET": { "type": "string" },
+    "GOOGLE_OAUTH_REDIRECT_URI": { "type": "string", "format": "uri" },
+    "OAUTH_ENCRYPTION_KEY": { "type": "string", "minLength": 16 }
   },
   "required": [
     "BASIC_AUTH_USER",

@@ -3,5 +3,6 @@ module.exports = {
   ...require('./auth'),
   ...require('./internalFetch'),
   ...require('./logger'),
-  ...require('./cors')
+  ...require('./cors'),
+  ...require('./webhooks')
 };
