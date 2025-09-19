@@ -49,6 +49,9 @@ async function initDb() {
       )
     `);
 
+    await client.query('ALTER TABLE logs ADD COLUMN IF NOT EXISTS trace_id TEXT');
+    await client.query('ALTER TABLE task_events ADD COLUMN IF NOT EXISTS trace_id TEXT');
+
     await client.query('CREATE INDEX IF NOT EXISTS idx_logs_ts ON logs(ts_utc DESC)');
     await client.query('CREATE INDEX IF NOT EXISTS idx_logs_service ON logs(service)');
     await client.query('CREATE INDEX IF NOT EXISTS idx_logs_corr ON logs(correlation_id)');
