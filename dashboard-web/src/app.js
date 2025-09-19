@@ -142,29 +142,29 @@ elements.refreshDbSnapshot?.addEventListener('click', refreshDatabaseSnapshot);
 function onSettingsSubmit(event) {
   event.preventDefault();
   const formData = new FormData(elements.settingsForm);
-  settings = {
-    orchestratorUrl: formData.get('orchestratorUrl')?.trim() || '',
+  const orchestratorUrl = formData.get('orchestratorUrl')?.trim() || '';
+
+  if (!orchestratorUrl) {
+    alert('Orchestrator base URL is required to connect.');
+    return;
+  }
+
+  const nextSettings = {
+    ...settings,
+    orchestratorUrl,
     websocketUrl: formData.get('websocketUrl')?.trim() || '',
     loggingUrl: formData.get('loggingUrl')?.trim() || '',
     echoUrl: formData.get('echoUrl')?.trim() || '',
     renderctlUrl: formData.get('renderctlUrl')?.trim() || '',
-    twilioAccountSid: formData.get('twilioAccountSid')?.trim() || '',
-    twilioAuthToken: formData.get('twilioAuthToken')?.trim() || '',
     twilioBaseUrl: valueOrDefault(formData.get('twilioBaseUrl'), defaultSettings.twilioBaseUrl),
-    hubspotApiKey: formData.get('hubspotApiKey')?.trim() || '',
     hubspotBaseUrl: valueOrDefault(formData.get('hubspotBaseUrl'), defaultSettings.hubspotBaseUrl),
-    openaiApiKey: formData.get('openaiApiKey')?.trim() || '',
     openaiBaseUrl: valueOrDefault(formData.get('openaiBaseUrl'), defaultSettings.openaiBaseUrl),
-    googleApiKey: formData.get('googleApiKey')?.trim() || '',
     googleBaseUrl: valueOrDefault(formData.get('googleBaseUrl'), defaultSettings.googleBaseUrl),
     username: formData.get('username')?.trim() || '',
     password: formData.get('password') || ''
   };
 
-  if (!settings.orchestratorUrl) {
-    alert('Orchestrator base URL is required to connect.');
-    return;
-  }
+  settings = nextSettings;
 
   saveSettings(settings);
   initializeConnections();
