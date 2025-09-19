@@ -1,10 +1,22 @@
 # Personal AI Orchestration
 
-Modular monorepo for a continuously running agent framework that coordinates outbound communications, deployment automation, and observability. The layout is optimized for Render deployments and implements the Phase 1 "Build Pack" plan defined in [`docs/product-requirements.md`](docs/product-requirements.md).
+Modular monorepo for a continuously running agent framework that coordinates outbound communications, deployment automation, and observability. The layout is optimized for Render deployments with **Phase 1 completed** and **Phase 2 (communications agents) in progress** as defined in [`docs/product-requirements.md`](docs/product-requirements.md).
 
-- **services/** — Each backend service (orchestrator, logging, echo agent, render control) bundles its own source and Dockerfile.
-- **dashboard-web/** — Static dashboard that surfaces task activity, logs, config validation, and manual task triggers.
-- **infra/** — Shared configuration schema, Render blueprint, and other deployment automation assets.
+## Current Status: Phase 2 Communications Build-out
+
+**✅ Phase 1 Complete** - Foundation, orchestrator, logging, dashboard, and deployment automation all operational.
+
+**🚧 Phase 2 In Progress** - Multi-channel communications with specialized agents:
+- **✅ Real-Time Voice Agent** — `call-agent-svc` with Twilio + OpenAI SIP realtime integration, supports outbound calls with AI conversation
+- **⬜ Messaging Agents** — SMS/WhatsApp agents for text communications (pending)
+- **⬜ Email Agent** — SendGrid/SMTP integration for email delivery (pending)
+- **⬜ Dynamic Content** — AI-authored content generation with hosted URLs (pending)
+
+## Architecture
+
+- **services/** — Each backend service (orchestrator, logging, echo agent, render control, **call agent**) bundles its own source and Dockerfile.
+- **dashboard-web/** — Interactive dashboard with activity stream, task management, config validation, and **voice call tester UI**.
+- **infra/** — Shared configuration schema, Render blueprint, migrations, and deployment automation assets.
 - **.github/workflows/** — CI/CD workflows. `deploy.yml` currently mirrors the monorepo and is ready for future automation.
 
 ## Getting Started
@@ -24,13 +36,38 @@ Modular monorepo for a continuously running agent framework that coordinates out
 - [`docs/phase-2-build-pack.md`](docs/phase-2-build-pack.md) — roadmap and task list for the communications-focused Phase 2 rollout.
 - [`docs/testing.md`](docs/testing.md) — manual regression checklist spanning services, dashboard, and Render automation.
 
-## Phase 1 Focus Areas
-- Implement database-backed task and log storage with optimistic locking and event trails.
-- Finish service endpoints (`logging-svc`, `orchestrator-svc`, `echo-agent-svc`) using shared config + auth primitives.
-- Build out dashboard views (activity stream, task manager, config inspector) and hook up WebSocket updates.
-- Deliver `renderctl-svc` endpoints to automate Render service provisioning and environment synchronization.
+## Phase 2 Implementation Status
 
-Refer to the documentation above for detailed requirement breakdowns, user stories, and the phased roadmap.
+### ✅ Completed Components
+- **Platform Foundations** — Extended config schema, migrations for communication dossiers, agent registry refactoring, Google OAuth integration, signature verification helpers
+- **Real-Time Voice Agent** — `call-agent-svc` with full Twilio + OpenAI SIP realtime integration
+- **Dashboard Enhancements** — Voice call tester UI with real-time call progression monitoring
+
+### 🚧 In Progress / Next Priorities
+- **Messaging Agent Service** — Build `services/messaging-agent-svc` for SMS/WhatsApp outbound/inbound communications
+- **Email Agent Service** — Create `services/email-agent-svc` with SendGrid/SMTP integration
+- **Dynamic Content Generation** — Implement AI-authored content service with hosted URLs
+- **Enhanced Orchestrator Routing** — Channel selection logic based on task metadata and policies
+- **Expanded Dashboard UX** — Channel filters, artifact display, inbound queue management
+
+### 📋 Remaining Phase 2 Tasks
+1. **Services to Build:**
+   - `messaging-agent-svc` (SMS/WhatsApp via Twilio)
+   - `email-agent-svc` (SendGrid/SMTP delivery)
+   - Dynamic content generation service/worker
+
+2. **Platform Enhancements:**
+   - Multi-channel routing rules in orchestrator
+   - Logging taxonomy with channel tags and artifact references
+   - Dossier query APIs for cross-channel contact history
+
+3. **DevOps & Quality:**
+   - Update Render blueprints and dev tooling for new services
+   - Extend smoke tests for asynchronous agent flows
+   - Enhanced monitoring and health metrics
+   - End-to-end testing across agents and fallback scenarios
+
+Refer to the documentation above for detailed requirement breakdowns, user stories, and the complete phased roadmap.
 
 ## Render Control Quickstart
 - Ensure `RENDER_API_TOKEN` (and optional `RENDER_API_BASE_URL`) are set for `renderctl-svc`.
@@ -48,7 +85,7 @@ Refer to the documentation above for detailed requirement breakdowns, user stori
 - `npm run test:connectivity` — sanity check internal services plus Twilio, HubSpot, OpenAI, and Google integrations using the current environment variables.
 - `npm run seed:examples` — post sample echo tasks (optionally wait for completion) and emit a demo log.
 - `npm run render:status` — leverage `renderctl-svc` to list services and report the latest deploy status (use `--fail-on-error` to exit non-zero when any deploy failed).
-- `npm run dev:services` — launch orchestrator, logging, echo, and renderctl services locally with prefixed logs (pass `--only orchestrator,logging` to limit scope).
+- `npm run dev:services` — launch orchestrator, logging, echo, renderctl, and call agent services locally with prefixed logs (pass `--only orchestrator,logging` to limit scope).
 
 ## Deployment notes
 - After every push to `main`, confirm each Render web service in the personal-ai-orchestration environment shows the latest deploy as `live`. Use `renderctl-svc` (`GET /render/services`) or the Render dashboard, and trigger a redeploy if any service reports `update_failed`.

@@ -3,6 +3,7 @@ const helmet = require('helmet');
 const morgan = require('morgan');
 const http = require('http');
 const { v4: uuidv4 } = require('uuid');
+const crypto = require('crypto');
 
 const {
   ensureConfig,
@@ -290,6 +291,252 @@ async function createService() {
         data: { id: req.params.id, error: err.message }
       });
       res.status(500).json({ error: 'Failed to patch task' });
+    }
+  });
+
+  // OAuth Routes
+  app.get('/oauth/google/status', async (req, res) => {
+    try {
+      const scopes = req.query.scopes ? req.query.scopes.split(',') : ['gmail', 'calendar'];
+      const tokens = await getOAuthTokens('google', scopes);
+
+      logger.info('OAUTH_STATUS_CHECK', {
+        data: {
+          provider: 'google',
+          requestedScopes: scopes,
+          hasTokens: tokens.map(t => ({ scope: t.scope_group, hasToken: !!t.access_token, expires: t.expires_at }))
+        }
+      });
+
+      res.json({
+        provider: 'google',
+        tokens: tokens.map(token => ({
+          scope_group: token.scope_group,
+          scopes: token.scopes || [],
+          has_token: !!token.access_token,
+          expires_at: token.expires_at,
+          is_expired: token.expires_at ? new Date(token.expires_at) < new Date() : false
+        }))
+      });
+    } catch (err) {
+      logger.error('OAUTH_STATUS_ERROR', { data: { error: err.message } });
+      res.status(500).json({ error: 'Failed to check OAuth status' });
+    }
+  });
+
+  app.get('/oauth/google/authorize', async (req, res) => {
+    try {
+      const scope_group = req.query.scope_group || 'gmail';
+      const state = crypto.randomBytes(32).toString('hex');
+
+      // Store state for validation
+      const stateKey = `oauth_state:${state}`;
+      await pool.query(
+        'INSERT INTO oauth_tokens (provider, scope_group, user_identifier, encrypted_access_token, metadata) VALUES ($1, $2, $3, $4, $5) ON CONFLICT (provider, scope_group, user_identifier) DO UPDATE SET metadata = $5, updated_at = NOW()',
+        ['google', 'state', state, 'pending', { expires_at: new Date(Date.now() + 10 * 60 * 1000) }] // 10 min expiry
+      );
+
+      const scopes = getScopesForGroup(scope_group);
+      const params = new URLSearchParams({
+        client_id: process.env.GOOGLE_OAUTH_CLIENT_ID,
+        redirect_uri: process.env.GOOGLE_OAUTH_REDIRECT_URI,
+        scope: scopes.join(' '),
+        response_type: 'code',
+        access_type: 'offline',
+        prompt: 'consent',
+        state: `${scope_group}:${state}`
+      });
+
+      const authUrl = `https://accounts.google.com/o/oauth2/v2/auth?${params.toString()}`;
+
+      logger.info('OAUTH_AUTHORIZE_REDIRECT', {
+        data: {
+          provider: 'google',
+          scope_group,
+          scopes,
+          state: state.substring(0, 8) + '...' // Log partial state for debugging
+        }
+      });
+
+      res.json({ auth_url: authUrl });
+    } catch (err) {
+      logger.error('OAUTH_AUTHORIZE_ERROR', { data: { error: err.message } });
+      res.status(500).json({ error: 'Failed to generate authorization URL' });
+    }
+  });
+
+  app.get('/oauth/google/callback', async (req, res) => {
+    try {
+      const { code, state, error } = req.query;
+
+      if (error) {
+        logger.warn('OAUTH_CALLBACK_ERROR', { data: { error, state } });
+        return res.status(400).send(`OAuth error: ${error}`);
+      }
+
+      if (!code || !state) {
+        logger.warn('OAUTH_CALLBACK_MISSING_PARAMS', { data: { hasCode: !!code, hasState: !!state } });
+        return res.status(400).send('Missing code or state parameter');
+      }
+
+      const [scope_group, stateToken] = state.split(':');
+      if (!scope_group || !stateToken) {
+        logger.warn('OAUTH_CALLBACK_INVALID_STATE', { data: { state } });
+        return res.status(400).send('Invalid state parameter');
+      }
+
+      // Verify state
+      const stateResult = await pool.query(
+        'SELECT * FROM oauth_tokens WHERE provider = $1 AND scope_group = $2 AND user_identifier = $3',
+        ['google', 'state', stateToken]
+      );
+
+      if (stateResult.rows.length === 0) {
+        logger.warn('OAUTH_CALLBACK_STATE_NOT_FOUND', { data: { stateToken: stateToken.substring(0, 8) + '...' } });
+        return res.status(400).send('Invalid or expired state');
+      }
+
+      // Exchange code for tokens
+      const tokenResponse = await fetch('https://oauth2.googleapis.com/token', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: new URLSearchParams({
+          code,
+          client_id: process.env.GOOGLE_OAUTH_CLIENT_ID,
+          client_secret: process.env.GOOGLE_OAUTH_CLIENT_SECRET,
+          redirect_uri: process.env.GOOGLE_OAUTH_REDIRECT_URI,
+          grant_type: 'authorization_code'
+        })
+      });
+
+      if (!tokenResponse.ok) {
+        const errorText = await tokenResponse.text();
+        logger.error('OAUTH_TOKEN_EXCHANGE_FAILED', {
+          data: {
+            status: tokenResponse.status,
+            error: errorText.substring(0, 200)
+          }
+        });
+        return res.status(500).send('Failed to exchange authorization code');
+      }
+
+      const tokens = await tokenResponse.json();
+
+      // Encrypt tokens
+      const encryptedAccessToken = encryptToken(tokens.access_token);
+      const encryptedRefreshToken = tokens.refresh_token ? encryptToken(tokens.refresh_token) : null;
+      const expiresAt = tokens.expires_in ? new Date(Date.now() + tokens.expires_in * 1000) : null;
+
+      // Store tokens
+      await pool.query(
+        `INSERT INTO oauth_tokens (provider, scope_group, user_identifier, encrypted_access_token, encrypted_refresh_token, expires_at, scopes, metadata)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+         ON CONFLICT (provider, scope_group, user_identifier)
+         DO UPDATE SET
+           encrypted_access_token = $4,
+           encrypted_refresh_token = $5,
+           expires_at = $6,
+           scopes = $7,
+           metadata = $8,
+           updated_at = NOW()`,
+        [
+          'google',
+          scope_group,
+          'default',
+          encryptedAccessToken,
+          encryptedRefreshToken,
+          expiresAt,
+          tokens.scope ? tokens.scope.split(' ') : getScopesForGroup(scope_group),
+          { token_type: tokens.token_type }
+        ]
+      );
+
+      // Clean up state token
+      await pool.query(
+        'DELETE FROM oauth_tokens WHERE provider = $1 AND scope_group = $2 AND user_identifier = $3',
+        ['google', 'state', stateToken]
+      );
+
+      logger.info('OAUTH_TOKEN_STORED', {
+        data: {
+          provider: 'google',
+          scope_group,
+          scopes: tokens.scope ? tokens.scope.split(' ') : getScopesForGroup(scope_group),
+          expires_at: expiresAt
+        }
+      });
+
+      res.send(`
+        <html>
+          <head><title>Authorization Complete</title></head>
+          <body style="font-family: system-ui; padding: 40px; text-align: center;">
+            <h1>✅ Authorization Successful</h1>
+            <p>Google ${scope_group} access has been granted and stored securely.</p>
+            <p><a href="#" onclick="window.close()">Close this window</a></p>
+            <script>
+              setTimeout(() => window.close(), 3000);
+              if (window.opener) {
+                window.opener.postMessage({
+                  type: 'oauth_complete',
+                  provider: 'google',
+                  scope_group: '${scope_group}',
+                  success: true
+                }, '*');
+              }
+            </script>
+          </body>
+        </html>
+      `);
+    } catch (err) {
+      logger.error('OAUTH_CALLBACK_ERROR', { data: { error: err.message, stack: err.stack } });
+      res.status(500).send(`
+        <html>
+          <head><title>Authorization Failed</title></head>
+          <body style="font-family: system-ui; padding: 40px; text-align: center;">
+            <h1>❌ Authorization Failed</h1>
+            <p>An error occurred while processing the authorization.</p>
+            <p><a href="#" onclick="window.close()">Close this window</a></p>
+            <script>
+              if (window.opener) {
+                window.opener.postMessage({
+                  type: 'oauth_complete',
+                  provider: 'google',
+                  success: false,
+                  error: 'Authorization processing failed'
+                }, '*');
+              }
+            </script>
+          </body>
+        </html>
+      `);
+    }
+  });
+
+  app.delete('/oauth/google/:scope_group', async (req, res) => {
+    try {
+      const { scope_group } = req.params;
+
+      const result = await pool.query(
+        'DELETE FROM oauth_tokens WHERE provider = $1 AND scope_group = $2 AND user_identifier = $3',
+        ['google', scope_group, 'default']
+      );
+
+      logger.info('OAUTH_TOKEN_REVOKED', {
+        data: {
+          provider: 'google',
+          scope_group,
+          deleted_count: result.rowCount
+        }
+      });
+
+      res.json({
+        success: true,
+        message: `Google ${scope_group} authorization revoked`,
+        deleted_count: result.rowCount
+      });
+    } catch (err) {
+      logger.error('OAUTH_REVOKE_ERROR', { data: { error: err.message } });
+      res.status(500).json({ error: 'Failed to revoke authorization' });
     }
   });
 
@@ -781,4 +1028,69 @@ async function testGoogle() {
     checks.push({ key: 'key', label: 'API Key', status: 'warn', detail: 'No GOOGLE_API_KEY set; using unauthenticated request' });
   }
   return { overall, checks };
+}
+
+// OAuth Helper Functions
+function getScopesForGroup(scope_group) {
+  const scopeMap = {
+    gmail: [
+      'https://www.googleapis.com/auth/gmail.readonly',
+      'https://www.googleapis.com/auth/gmail.send',
+      'https://www.googleapis.com/auth/gmail.compose'
+    ],
+    calendar: [
+      'https://www.googleapis.com/auth/calendar.readonly',
+      'https://www.googleapis.com/auth/calendar.events'
+    ],
+    combined: [
+      'https://www.googleapis.com/auth/gmail.readonly',
+      'https://www.googleapis.com/auth/gmail.send',
+      'https://www.googleapis.com/auth/gmail.compose',
+      'https://www.googleapis.com/auth/calendar.readonly',
+      'https://www.googleapis.com/auth/calendar.events'
+    ]
+  };
+  return scopeMap[scope_group] || scopeMap.gmail;
+}
+
+function encryptToken(token) {
+  if (!token) return null;
+  const key = process.env.OAUTH_ENCRYPTION_KEY;
+  if (!key || key.length < 16) {
+    throw new Error('OAUTH_ENCRYPTION_KEY must be at least 16 characters');
+  }
+  const cipher = crypto.createCipher('aes-256-cbc', key);
+  let encrypted = cipher.update(token, 'utf8', 'hex');
+  encrypted += cipher.final('hex');
+  return encrypted;
+}
+
+function decryptToken(encryptedToken) {
+  if (!encryptedToken) return null;
+  const key = process.env.OAUTH_ENCRYPTION_KEY;
+  if (!key || key.length < 16) {
+    throw new Error('OAUTH_ENCRYPTION_KEY must be at least 16 characters');
+  }
+  const decipher = crypto.createDecipher('aes-256-cbc', key);
+  let decrypted = decipher.update(encryptedToken, 'hex', 'utf8');
+  decrypted += decipher.final('utf8');
+  return decrypted;
+}
+
+async function getOAuthTokens(provider, scopeGroups) {
+  const scopes = Array.isArray(scopeGroups) ? scopeGroups : [scopeGroups];
+  const placeholders = scopes.map((_, i) => `$${i + 2}`).join(',');
+
+  const result = await pool.query(
+    `SELECT * FROM oauth_tokens
+     WHERE provider = $1 AND scope_group IN (${placeholders}) AND user_identifier = 'default'
+     ORDER BY scope_group`,
+    [provider, ...scopes]
+  );
+
+  return result.rows.map(row => ({
+    ...row,
+    access_token: row.encrypted_access_token ? decryptToken(row.encrypted_access_token) : null,
+    refresh_token: row.encrypted_refresh_token ? decryptToken(row.encrypted_refresh_token) : null
+  }));
 }

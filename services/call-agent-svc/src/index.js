@@ -247,11 +247,11 @@ function bootstrap() {
   app.use(requireAuth());
 
 
-  app.get('/health', authMiddleware, (req, res) => {
+  app.get('/health', (req, res) => {
     res.json({ service: SERVICE_NAME, status: 'ok', timestamp: new Date().toISOString() });
   });
 
-  app.get('/config/validate', authMiddleware, (req, res) => {
+  app.get('/config/validate', (req, res) => {
     res.json(buildConfigReport(SERVICE_NAME));
   });
 

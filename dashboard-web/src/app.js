@@ -75,7 +75,28 @@ const elements = {
   refreshDbSnapshot: document.getElementById('refresh-db-snapshot'),
   voiceCallForm: document.getElementById('voice-call-form'),
   voiceCallStatus: document.getElementById('voice-call-status'),
-  voiceCallSubmit: document.getElementById('voice-call-submit')
+  voiceCallSubmit: document.getElementById('voice-call-submit'),
+  // OAuth elements
+  toggleOauth: document.getElementById('toggle-oauth'),
+  oauthCard: document.getElementById('oauth-card'),
+  oauthContent: document.getElementById('oauth-content'),
+  oauthDebug: document.getElementById('oauth-debug'),
+  oauthDebugLog: document.getElementById('oauth-debug-log'),
+  // Gmail
+  gmailBadge: document.getElementById('gmail-badge'),
+  gmailDetails: document.getElementById('gmail-details'),
+  authorizeGmail: document.getElementById('authorize-gmail'),
+  revokeGmail: document.getElementById('revoke-gmail'),
+  // Calendar
+  calendarBadge: document.getElementById('calendar-badge'),
+  calendarDetails: document.getElementById('calendar-details'),
+  authorizeCalendar: document.getElementById('authorize-calendar'),
+  revokeCalendar: document.getElementById('revoke-calendar'),
+  // Combined
+  combinedBadge: document.getElementById('combined-badge'),
+  combinedDetails: document.getElementById('combined-details'),
+  authorizeCombined: document.getElementById('authorize-combined'),
+  revokeAll: document.getElementById('revoke-all')
 };
 
 const state = {
@@ -101,7 +122,8 @@ const state = {
     events: [],
     lastUpdated: null
   },
-  voiceCall: createVoiceCallState()
+  voiceCall: createVoiceCallState(),
+  oauth: createOAuthState()
 };
 
 function createVoiceCallState() {
@@ -117,6 +139,32 @@ function createVoiceCallState() {
       text: 'Enter a destination number to place a test call.',
       kind: 'info'
     }
+  };
+}
+
+function createOAuthState() {
+  return {
+    gmail: {
+      authorized: false,
+      expires_at: null,
+      scopes: [],
+      is_expired: false
+    },
+    calendar: {
+      authorized: false,
+      expires_at: null,
+      scopes: [],
+      is_expired: false
+    },
+    combined: {
+      authorized: false,
+      expires_at: null,
+      scopes: [],
+      is_expired: false
+    },
+    loading: false,
+    error: null,
+    debugLog: []
   };
 }
 
@@ -136,6 +184,7 @@ renderConnectivity();
 renderLogs();
 renderDatabaseSnapshot();
 renderVoiceCall();
+renderOAuthUI();
 
 if (settings.orchestratorUrl) {
   initializeConnections();
@@ -160,6 +209,30 @@ elements.runConnectivity?.addEventListener('click', () => {
 elements.clearLogs?.addEventListener('click', clearLogs);
 elements.copyLogs?.addEventListener('click', copyLogs);
 elements.refreshDbSnapshot?.addEventListener('click', refreshDatabaseSnapshot);
+
+// OAuth event listeners
+elements.toggleOauth?.addEventListener('click', toggleOAuthCard);
+elements.authorizeGmail?.addEventListener('click', () => authorizeOAuth('gmail'));
+elements.revokeGmail?.addEventListener('click', () => revokeOAuth('gmail'));
+elements.authorizeCalendar?.addEventListener('click', () => authorizeOAuth('calendar'));
+elements.revokeCalendar?.addEventListener('click', () => revokeOAuth('calendar'));
+elements.authorizeCombined?.addEventListener('click', () => authorizeOAuth('combined'));
+elements.revokeAll?.addEventListener('click', revokeAllOAuth);
+
+// Listen for OAuth callback messages from popup
+window.addEventListener('message', (event) => {
+  if (event.data?.type === 'oauth_complete') {
+    logOAuthDebug(`OAuth callback received: ${JSON.stringify(event.data)}`);
+    if (event.data.success) {
+      logOAuthDebug(`OAuth success for ${event.data.scope_group}`);
+      refreshOAuthStatus();
+    } else {
+      logOAuthDebug(`OAuth failed: ${event.data.error || 'Unknown error'}`);
+      state.oauth.error = event.data.error || 'Authorization failed';
+      renderOAuthUI();
+    }
+  }
+});
 
 function onSettingsSubmit(event) {
   event.preventDefault();
@@ -574,6 +647,7 @@ async function initializeConnections() {
   await Promise.allSettled([refreshTasks(), refreshActivity(), refreshConfig()]);
   await runConnectivityCheck();
   await refreshDatabaseSnapshot();
+  await refreshOAuthStatus();
   connectWebsocket();
 }
 
@@ -2145,4 +2219,256 @@ function getRuntimeDefaults() {
     }
   });
   return sanitized;
+}
+
+// OAuth Functions
+function toggleOAuthCard() {
+  elements.oauthCard?.classList.toggle('collapsed');
+}
+
+async function refreshOAuthStatus() {
+  if (!orchestratorClient) {
+    logOAuthDebug('Cannot check OAuth status: orchestrator client not connected');
+    return;
+  }
+
+  state.oauth.loading = true;
+  state.oauth.error = null;
+  renderOAuthUI();
+
+  try {
+    logOAuthDebug('Checking OAuth status...');
+    const response = await orchestratorClient.get('/oauth/google/status?scopes=gmail,calendar');
+    const data = await response.json();
+
+    logOAuthDebug(`OAuth status response: ${JSON.stringify(data, null, 2)}`);
+
+    // Update state based on response
+    data.tokens?.forEach(token => {
+      if (state.oauth[token.scope_group]) {
+        state.oauth[token.scope_group] = {
+          authorized: token.has_token,
+          expires_at: token.expires_at,
+          scopes: token.scopes || [],
+          is_expired: token.is_expired
+        };
+      }
+    });
+
+    state.oauth.loading = false;
+    renderOAuthUI();
+  } catch (error) {
+    logOAuthDebug(`OAuth status check failed: ${error.message}`);
+    state.oauth.loading = false;
+    state.oauth.error = `Failed to check OAuth status: ${error.message}`;
+    renderOAuthUI();
+  }
+}
+
+async function authorizeOAuth(scope_group) {
+  if (!orchestratorClient) {
+    logOAuthDebug('Cannot authorize: orchestrator client not connected');
+    return;
+  }
+
+  try {
+    logOAuthDebug(`Starting OAuth authorization for ${scope_group}...`);
+    const response = await orchestratorClient.get(`/oauth/google/authorize?scope_group=${scope_group}`);
+    const data = await response.json();
+
+    if (data.auth_url) {
+      logOAuthDebug(`Opening OAuth popup: ${data.auth_url}`);
+      const popup = window.open(
+        data.auth_url,
+        'oauth_popup',
+        'width=600,height=600,scrollbars=yes,resizable=yes'
+      );
+
+      if (!popup) {
+        throw new Error('Popup blocked. Please allow popups for this site and try again.');
+      }
+
+      // Monitor popup
+      const checkClosed = setInterval(() => {
+        if (popup.closed) {
+          clearInterval(checkClosed);
+          logOAuthDebug('OAuth popup closed');
+          // Refresh status in case user completed authorization
+          setTimeout(() => refreshOAuthStatus(), 1000);
+        }
+      }, 1000);
+    } else {
+      throw new Error('No authorization URL received');
+    }
+  } catch (error) {
+    logOAuthDebug(`OAuth authorization failed: ${error.message}`);
+    state.oauth.error = `Authorization failed: ${error.message}`;
+    renderOAuthUI();
+  }
+}
+
+async function revokeOAuth(scope_group) {
+  if (!orchestratorClient) {
+    logOAuthDebug('Cannot revoke: orchestrator client not connected');
+    return;
+  }
+
+  if (!confirm(`Are you sure you want to revoke ${scope_group} access?`)) {
+    return;
+  }
+
+  try {
+    logOAuthDebug(`Revoking OAuth for ${scope_group}...`);
+    const response = await orchestratorClient.delete(`/oauth/google/${scope_group}`);
+    const data = await response.json();
+
+    logOAuthDebug(`Revoke response: ${JSON.stringify(data)}`);
+
+    if (state.oauth[scope_group]) {
+      state.oauth[scope_group] = {
+        authorized: false,
+        expires_at: null,
+        scopes: [],
+        is_expired: false
+      };
+    }
+
+    renderOAuthUI();
+  } catch (error) {
+    logOAuthDebug(`OAuth revocation failed: ${error.message}`);
+    state.oauth.error = `Revocation failed: ${error.message}`;
+    renderOAuthUI();
+  }
+}
+
+async function revokeAllOAuth() {
+  if (!confirm('Are you sure you want to revoke ALL Google authorizations?')) {
+    return;
+  }
+
+  logOAuthDebug('Revoking all OAuth tokens...');
+  await Promise.all([
+    revokeOAuth('gmail'),
+    revokeOAuth('calendar'),
+    revokeOAuth('combined')
+  ]);
+}
+
+function renderOAuthUI() {
+  // Update Gmail status
+  updateOAuthBadge('gmail', elements.gmailBadge, elements.gmailDetails);
+  updateOAuthButtons('gmail', elements.authorizeGmail, elements.revokeGmail);
+
+  // Update Calendar status
+  updateOAuthBadge('calendar', elements.calendarBadge, elements.calendarDetails);
+  updateOAuthButtons('calendar', elements.authorizeCalendar, elements.revokeCalendar);
+
+  // Update Combined status (show if either gmail or calendar is authorized)
+  const hasAnyAuth = state.oauth.gmail.authorized || state.oauth.calendar.authorized;
+  if (elements.combinedBadge) {
+    elements.combinedBadge.textContent = hasAnyAuth ? 'Partially Authorized' : 'Not Authorized';
+    elements.combinedBadge.className = 'status-badge ' + (hasAnyAuth ? 'authorized' : 'not-authorized');
+  }
+  if (elements.combinedDetails) {
+    const authTypes = [];
+    if (state.oauth.gmail.authorized) authTypes.push('Gmail');
+    if (state.oauth.calendar.authorized) authTypes.push('Calendar');
+    elements.combinedDetails.textContent = hasAnyAuth ? `Active: ${authTypes.join(', ')}` : '';
+  }
+
+  // Update combined buttons
+  if (elements.authorizeCombined) {
+    elements.authorizeCombined.disabled = state.oauth.loading;
+  }
+  if (elements.revokeAll) {
+    elements.revokeAll.style.display = hasAnyAuth ? 'inline-block' : 'none';
+    elements.revokeAll.disabled = state.oauth.loading;
+  }
+
+  // Update debug log
+  if (elements.oauthDebugLog) {
+    elements.oauthDebugLog.textContent = state.oauth.debugLog.join('\n');
+    if (state.oauth.debugLog.length > 0) {
+      elements.oauthDebug.style.display = 'block';
+    }
+  }
+
+  // Show error if any
+  if (state.oauth.error) {
+    logOAuthDebug(`ERROR: ${state.oauth.error}`);
+  }
+}
+
+function updateOAuthBadge(scope_group, badgeElement, detailsElement) {
+  const tokenInfo = state.oauth[scope_group];
+  if (!tokenInfo || !badgeElement) return;
+
+  let status, className, details = '';
+
+  if (state.oauth.loading) {
+    status = 'Checking...';
+    className = 'checking';
+  } else if (tokenInfo.authorized) {
+    if (tokenInfo.is_expired) {
+      status = 'Expired';
+      className = 'expired';
+      details = 'Token expired, re-authorization needed';
+    } else {
+      status = 'Authorized';
+      className = 'authorized';
+      if (tokenInfo.expires_at) {
+        const expiresDate = new Date(tokenInfo.expires_at);
+        details = `Expires: ${expiresDate.toLocaleDateString()} ${expiresDate.toLocaleTimeString()}`;
+      }
+      if (tokenInfo.scopes?.length > 0) {
+        details += details ? ' | ' : '';
+        details += `Scopes: ${tokenInfo.scopes.length}`;
+      }
+    }
+  } else {
+    status = 'Not Authorized';
+    className = 'not-authorized';
+  }
+
+  badgeElement.textContent = status;
+  badgeElement.className = 'status-badge ' + className;
+
+  if (detailsElement) {
+    detailsElement.textContent = details;
+  }
+}
+
+function updateOAuthButtons(scope_group, authorizeButton, revokeButton) {
+  const tokenInfo = state.oauth[scope_group];
+  if (!tokenInfo) return;
+
+  if (authorizeButton) {
+    authorizeButton.disabled = state.oauth.loading;
+    authorizeButton.textContent = state.oauth.loading ? 'Checking...' :
+      (tokenInfo.authorized && !tokenInfo.is_expired) ? 'Re-authorize' : `Authorize ${scope_group}`;
+  }
+
+  if (revokeButton) {
+    revokeButton.style.display = tokenInfo.authorized ? 'inline-block' : 'none';
+    revokeButton.disabled = state.oauth.loading;
+  }
+}
+
+function logOAuthDebug(message) {
+  const timestamp = new Date().toISOString().substring(11, 23); // HH:MM:SS.mmm
+  const logMessage = `[${timestamp}] ${message}`;
+  state.oauth.debugLog.push(logMessage);
+
+  // Keep only last 50 entries
+  if (state.oauth.debugLog.length > 50) {
+    state.oauth.debugLog = state.oauth.debugLog.slice(-50);
+  }
+
+  console.log('[OAuth]', message);
+
+  // Update debug display if visible
+  if (elements.oauthDebugLog) {
+    elements.oauthDebugLog.textContent = state.oauth.debugLog.join('\n');
+    elements.oauthDebugLog.scrollTop = elements.oauthDebugLog.scrollHeight;
+  }
 }

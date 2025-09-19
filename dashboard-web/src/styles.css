@@ -687,3 +687,135 @@ tr.empty td {
 .hidden {
   display: none !important;
 }
+
+/* OAuth Styles */
+.oauth-card {
+  margin-bottom: 2rem;
+}
+
+.oauth-content {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+.oauth-section {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 1rem;
+  border: 1px solid var(--card-border);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.oauth-info {
+  flex: 1;
+}
+
+.oauth-info h3 {
+  margin: 0 0 0.5rem 0;
+  font-size: 1.1rem;
+  color: var(--text);
+}
+
+.oauth-info p {
+  margin: 0 0 0.75rem 0;
+  color: var(--text-muted);
+  font-size: 0.9rem;
+}
+
+.oauth-status {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.status-badge {
+  padding: 0.25rem 0.75rem;
+  border-radius: 12px;
+  font-size: 0.8rem;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.status-badge.authorized {
+  background: rgba(74, 222, 128, 0.2);
+  color: var(--success);
+  border: 1px solid rgba(74, 222, 128, 0.3);
+}
+
+.status-badge.not-authorized {
+  background: rgba(248, 113, 113, 0.2);
+  color: var(--danger);
+  border: 1px solid rgba(248, 113, 113, 0.3);
+}
+
+.status-badge.expired {
+  background: rgba(250, 204, 21, 0.2);
+  color: var(--warning);
+  border: 1px solid rgba(250, 204, 21, 0.3);
+}
+
+.status-badge.checking {
+  background: rgba(148, 163, 184, 0.2);
+  color: var(--text-muted);
+  border: 1px solid rgba(148, 163, 184, 0.3);
+}
+
+.oauth-details {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+}
+
+.oauth-actions {
+  display: flex;
+  gap: 0.5rem;
+  flex-shrink: 0;
+}
+
+.oauth-debug {
+  margin-top: 1rem;
+  padding: 1rem;
+  background: rgba(0, 0, 0, 0.3);
+  border-radius: 8px;
+  border: 1px solid var(--card-border);
+}
+
+.oauth-debug h4 {
+  margin: 0 0 0.5rem 0;
+  font-size: 0.9rem;
+  color: var(--text-muted);
+}
+
+.oauth-debug pre {
+  margin: 0;
+  font-family: var(--mono);
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  white-space: pre-wrap;
+  max-height: 200px;
+  overflow-y: auto;
+}
+
+.oauth-card.collapsed .oauth-content {
+  display: none;
+}
+
+.oauth-card.collapsed {
+  padding-bottom: 1rem;
+}
+
+@media (max-width: 768px) {
+  .oauth-section {
+    flex-direction: column;
+    align-items: stretch;
+    text-align: center;
+  }
+
+  .oauth-actions {
+    justify-content: center;
+  }
+}

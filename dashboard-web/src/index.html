@@ -74,6 +74,65 @@
         <p class="hint">Credentials are stored only in this browser via localStorage for quick reconnects.</p>
       </section>
 
+      <section class="card oauth-card" id="oauth-card">
+        <header class="card-header">
+          <h2>Google Integrations</h2>
+          <button type="button" class="ghost" id="toggle-oauth">Collapse</button>
+        </header>
+        <div id="oauth-content" class="oauth-content">
+          <div class="oauth-section">
+            <div class="oauth-info">
+              <h3>📧 Gmail Access</h3>
+              <p>Connect Gmail to send and read emails through the AI agents.</p>
+              <div class="oauth-status" id="gmail-status">
+                <span class="status-badge" id="gmail-badge">Checking...</span>
+                <span class="oauth-details" id="gmail-details"></span>
+              </div>
+            </div>
+            <div class="oauth-actions">
+              <button type="button" class="primary" id="authorize-gmail">Authorize Gmail</button>
+              <button type="button" class="ghost" id="revoke-gmail" style="display: none;">Revoke</button>
+            </div>
+          </div>
+
+          <div class="oauth-section">
+            <div class="oauth-info">
+              <h3>📅 Calendar Access</h3>
+              <p>Connect Google Calendar to create and manage calendar events.</p>
+              <div class="oauth-status" id="calendar-status">
+                <span class="status-badge" id="calendar-badge">Checking...</span>
+                <span class="oauth-details" id="calendar-details"></span>
+              </div>
+            </div>
+            <div class="oauth-actions">
+              <button type="button" class="primary" id="authorize-calendar">Authorize Calendar</button>
+              <button type="button" class="ghost" id="revoke-calendar" style="display: none;">Revoke</button>
+            </div>
+          </div>
+
+          <div class="oauth-section">
+            <div class="oauth-info">
+              <h3>🔗 Combined Access</h3>
+              <p>Authorize both Gmail and Calendar access in one step.</p>
+              <div class="oauth-status" id="combined-status">
+                <span class="status-badge" id="combined-badge">Ready</span>
+                <span class="oauth-details" id="combined-details"></span>
+              </div>
+            </div>
+            <div class="oauth-actions">
+              <button type="button" class="primary" id="authorize-combined">Authorize Both</button>
+              <button type="button" class="ghost" id="revoke-all" style="display: none;">Revoke All</button>
+            </div>
+          </div>
+
+          <div class="oauth-debug" id="oauth-debug" style="display: none;">
+            <h4>Debug Information</h4>
+            <pre id="oauth-debug-log"></pre>
+          </div>
+        </div>
+        <p class="hint">OAuth tokens are encrypted and stored securely on the server. Authorization persists across browser sessions.</p>
+      </section>
+
       <section class="grid">
         <div class="column">
           <article class="card" id="task-summary-card">
