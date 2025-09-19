@@ -7,6 +7,7 @@ Operator-focused SPA for the Personal AI Orchestration stack. The dashboard cove
 - stream activity via the orchestrator WebSocket and logging fan-out so operators see live updates
 - validate service configuration using `/config/validate` endpoints for orchestrator, logging, echo, and renderctl
 - run connectivity checks against each service (`/health` + `/config/validate`) to confirm the dashboard can reach orchestrator, logging, echo, and renderctl before kicking off workflows
+- capture detailed diagnostics in the on-page log so operators can share connectivity failures and WebSocket state changes for troubleshooting
 
 Default connection settings point to the Render-hosted Phase 1 stack (`personal-ai-orchestration.onrender.com`, `logging-svc.onrender.com`, etc.). Update the values in the Connections card if you deploy to a different environment.
 

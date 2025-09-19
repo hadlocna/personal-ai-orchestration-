@@ -5,7 +5,8 @@ const morgan = require('morgan');
 const {
   ensureConfig,
   buildConfigReport,
-  requireAuth
+  requireAuth,
+  createDashboardCors
 } = require('@repo/common');
 
 const {
@@ -31,13 +32,17 @@ async function createService() {
   await initDb();
 
   const app = express();
+  const dashboardCors = createDashboardCors();
 
   app.use(helmet());
   app.use(express.json({ limit: '1mb' }));
   app.use(morgan('combined'));
   app.use(requireAuth());
 
-  app.get('/health', async (req, res) => {
+  app.options('/health', dashboardCors);
+  app.options('/config/validate', dashboardCors);
+
+  app.get('/health', dashboardCors, async (req, res) => {
     try {
       await pool.query('SELECT 1');
       res.json({ service: SERVICE_NAME, status: 'ok', timestamp: new Date().toISOString() });
@@ -46,7 +51,7 @@ async function createService() {
     }
   });
 
-  app.get('/config/validate', (req, res) => {
+  app.get('/config/validate', dashboardCors, (req, res) => {
     res.json(buildConfigReport(SERVICE_NAME));
   });
 

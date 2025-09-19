@@ -2,6 +2,7 @@ import { createApiClient, encodeBasicAuth } from './api/client.js';
 
 const STORAGE_KEY = 'paio-dashboard-settings';
 const MAX_ACTIVITY_ENTRIES = 200;
+const MAX_LOG_ENTRIES = 300;
 const DEFAULT_SETTINGS = Object.freeze({
   orchestratorUrl: 'https://personal-ai-orchestration.onrender.com',
   websocketUrl: '',
@@ -36,7 +37,9 @@ const elements = {
   activityTemplate: document.getElementById('activity-item-template'),
   configResults: document.getElementById('config-results'),
   runConnectivity: document.getElementById('run-connectivity'),
-  connectivityResults: document.getElementById('connectivity-results')
+  connectivityResults: document.getElementById('connectivity-results'),
+  logOutput: document.getElementById('log-output'),
+  clearLogs: document.getElementById('clear-logs')
 };
 
 const state = {
@@ -51,7 +54,8 @@ const state = {
     results: [],
     lastRun: null,
     error: null
-  }
+  },
+  logs: []
 };
 
 let settings = loadSettings();
@@ -67,6 +71,7 @@ renderTaskDetail();
 renderConfigReports();
 renderSummary();
 renderConnectivity();
+renderLogs();
 
 if (settings.orchestratorUrl) {
   initializeConnections();
@@ -87,6 +92,7 @@ elements.newTaskForm?.addEventListener('submit', onNewTaskSubmit);
 elements.runConnectivity?.addEventListener('click', () => {
   runConnectivityCheck();
 });
+elements.clearLogs?.addEventListener('click', clearLogs);
 
 function onSettingsSubmit(event) {
   event.preventDefault();
@@ -230,6 +236,7 @@ function clearStoredSettings() {
   renderActivity();
   renderConfigReports();
   renderConnectivity('Provide service URLs above to run connectivity checks.');
+  appendLog('info', 'Settings', 'Connections reset to defaults.');
   setConnectionStatus('disconnected', 'Disconnected');
 }
 
@@ -274,6 +281,7 @@ async function initializeConnections() {
   }
 
   setConnectionStatus('connecting', 'Connecting…');
+  appendLog('info', 'Connections', `Connecting to orchestrator at ${settings.orchestratorUrl}`);
 
   await Promise.allSettled([refreshTasks(), refreshActivity(), refreshConfig()]);
   await runConnectivityCheck();
@@ -417,6 +425,7 @@ async function runConnectivityCheck() {
   if (!services.some((svc) => svc.base)) {
     state.connectivity = { running: false, results: [], lastRun: null, error: null };
     renderConnectivity('Provide service URLs above to run connectivity checks.');
+    appendLog('warn', 'Connectivity', 'No service URLs configured; check skipped.');
     return;
   }
 
@@ -424,6 +433,7 @@ async function runConnectivityCheck() {
   state.connectivity.error = null;
   state.connectivity.results = [];
   renderConnectivity();
+  appendLog('info', 'Connectivity', 'Starting connectivity diagnostic run.');
 
   try {
     const results = await Promise.all(
@@ -437,6 +447,7 @@ async function runConnectivityCheck() {
           };
         }
 
+        appendLog('info', service.name, `Checking ${service.base}`);
         const endpoints = [
           { key: 'health', label: 'Health', path: '/health', summarize: summarizeHealth },
           { key: 'config', label: 'Config', path: '/config/validate', summarize: summarizeConfig }
@@ -460,14 +471,17 @@ async function runConnectivityCheck() {
             } else if (summary.status === 'warn' && overall === 'ok') {
               overall = 'warn';
             }
+            appendLog(summary.status === 'ok' ? 'info' : 'warn', service.name, `${endpoint.label} → ${summary.status.toUpperCase()}${summary.detail ? ` (${summary.detail})` : ''}`);
           } catch (err) {
+            const errorDetail = inferNetworkError(err);
             checks.push({
               key: endpoint.key,
               label: endpoint.label,
               status: 'error',
-              detail: err.message || 'Request failed'
+              detail: errorDetail
             });
             overall = 'error';
+            appendLog('error', service.name, `${endpoint.label} request failed`, errorDetail);
           }
         }
 
@@ -481,9 +495,12 @@ async function runConnectivityCheck() {
 
     state.connectivity.results = results;
     state.connectivity.lastRun = new Date().toISOString();
+    appendLog('info', 'Connectivity', 'Connectivity run completed. Review results above.');
   } catch (err) {
     console.error('Connectivity check failed', err);
-    state.connectivity.error = err.message || 'Connectivity check failed';
+    const errorDetail = inferNetworkError(err);
+    state.connectivity.error = errorDetail;
+    appendLog('error', 'Connectivity', 'Connectivity run failed', errorDetail);
   } finally {
     state.connectivity.running = false;
     renderConnectivity();
@@ -491,7 +508,7 @@ async function runConnectivityCheck() {
 }
 
 function connectWebsocket() {
-  const wsUrl = settings.websocketUrl || deriveWsUrl(settings.orchestratorUrl);
+  const wsUrl = buildWebsocketUrl();
   if (!wsUrl) {
     setConnectionStatus('error', 'Invalid WebSocket URL');
     return;
@@ -508,16 +525,19 @@ function connectWebsocket() {
 
   websocket.onopen = () => {
     setConnectionStatus('connected', 'Live');
+    appendLog('info', 'WebSocket', 'Connected to orchestrator stream.');
   };
 
   websocket.onerror = (event) => {
     console.warn('WebSocket error', event);
     setConnectionStatus('error', 'WebSocket error');
+    appendLog('error', 'WebSocket', 'WebSocket reported an error.', event?.message || '');
   };
 
   websocket.onclose = () => {
     setConnectionStatus('disconnected', 'Disconnected');
     scheduleReconnect();
+    appendLog('warn', 'WebSocket', 'WebSocket connection closed. Retrying shortly.');
   };
 
   websocket.onmessage = (event) => {
@@ -1013,6 +1033,57 @@ function recordActivity(entry) {
   renderActivity();
 }
 
+function appendLog(level, scope, message, detail) {
+  const entry = {
+    level,
+    scope,
+    message,
+    detail: detail || '',
+    ts: new Date().toISOString()
+  };
+  state.logs.unshift(entry);
+  if (state.logs.length > MAX_LOG_ENTRIES) {
+    state.logs.length = MAX_LOG_ENTRIES;
+  }
+  renderLogs();
+}
+
+function clearLogs() {
+  state.logs = [];
+  renderLogs('Logs cleared.');
+}
+
+function renderLogs(message) {
+  const container = elements.logOutput;
+  if (!container) return;
+
+  if (message) {
+    container.textContent = message;
+    return;
+  }
+
+  if (!state.logs.length) {
+    container.textContent = 'No logs yet.';
+    return;
+  }
+
+  const html = state.logs
+    .map((entry) => {
+      const detail = entry.detail ? `\n  ${escapeHtml(entry.detail)}` : '';
+      return `
+        <div class="log-entry log-${escapeHtml(entry.level)}">
+          <span class="log-time">${escapeHtml(formatTimestamp(entry.ts))}</span>
+          <strong>[${escapeHtml(entry.level.toUpperCase())}] ${escapeHtml(entry.scope)}</strong>
+          <div>${escapeHtml(entry.message)}${detail}</div>
+        </div>
+      `;
+    })
+    .join('');
+
+  container.innerHTML = html;
+  container.scrollTop = container.scrollHeight;
+}
+
 function buildActivityEntry(type, ts, summary, data) {
   return {
     type,
@@ -1071,6 +1142,15 @@ function formatJson(value) {
   }
 }
 
+function inferNetworkError(err) {
+  if (!err) return 'Unknown error';
+  const message = err.message || String(err);
+  if (err.name === 'TypeError' && message.toLowerCase().includes('fetch')) {
+    return `${message} (possible CORS or network issue)`;
+  }
+  return message;
+}
+
 function escapeHtml(value) {
   if (value === undefined || value === null) return '';
   return String(value)
@@ -1110,6 +1190,34 @@ function buildAuthHeaders() {
   const headers = { 'Content-Type': 'application/json' };
   if (header) headers.Authorization = header;
   return headers;
+}
+
+function encodeBasicToken(username, password) {
+  if (!username || !password) return null;
+  if (typeof window !== 'undefined' && typeof window.btoa === 'function') {
+    return window.btoa(`${username}:${password}`);
+  }
+  if (typeof Buffer !== 'undefined') {
+    return Buffer.from(`${username}:${password}`, 'utf-8').toString('base64');
+  }
+  return null;
+}
+
+function buildWebsocketUrl() {
+  const rawUrl = settings.websocketUrl || deriveWsUrl(settings.orchestratorUrl);
+  if (!rawUrl) return null;
+
+  try {
+    const url = new URL(rawUrl);
+    const authToken = encodeBasicToken(settings.username, settings.password);
+    if (authToken) {
+      url.searchParams.set('auth', authToken);
+    }
+    return url.toString();
+  } catch (err) {
+    console.error('Failed to construct websocket URL', err);
+    return null;
+  }
 }
 
 function deriveWsUrl(baseUrl) {

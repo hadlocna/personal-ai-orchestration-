@@ -11,11 +11,13 @@
     "config:doctor": "node scripts/config-doctor.js",
     "test:smoke": "node scripts/smoke-test.js",
     "render:status": "node scripts/render-status.js",
-    "dev:services": "node scripts/dev-services.js"
+    "dev:services": "node scripts/dev-services.js",
+    "seed:examples": "node scripts/seed-examples.js"
   },
   "dependencies": {
     "ajv": "^8.12.0",
     "ajv-formats": "^3.0.1",
+    "cors": "^2.8.5",
     "dayjs": "^1.11.18",
     "dotenv": "^16.4.5",
     "eventsource": "^4.0.0",

@@ -559,6 +559,33 @@ tr.empty td {
   font-size: 0.85rem;
 }
 
+.log-output {
+  min-height: 140px;
+  max-height: 240px;
+  overflow-y: auto;
+  border-radius: 12px;
+  border: 1px solid rgba(148, 163, 184, 0.15);
+  background: rgba(15, 23, 42, 0.6);
+  padding: 0.9rem;
+  font-family: var(--mono);
+  font-size: 0.8rem;
+  line-height: 1.45;
+  white-space: pre-wrap;
+}
+
+.log-output .log-entry {
+  margin-bottom: 0.65rem;
+}
+
+.log-output .log-entry:last-child {
+  margin-bottom: 0;
+}
+
+.log-output .log-time {
+  color: var(--text-muted);
+  margin-right: 0.5rem;
+}
+
 @media (max-width: 720px) {
   .top-bar {
     flex-direction: column;
