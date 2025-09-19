@@ -6,6 +6,7 @@ Operator-focused SPA for the Personal AI Orchestration stack. The dashboard cove
 - list tasks with filtering, inspect payload/result/event timelines, and queue new jobs
 - stream activity via the orchestrator WebSocket and logging fan-out so operators see live updates
 - validate service configuration using `/config/validate` endpoints for orchestrator, logging, echo, and renderctl
+- run connectivity checks against each service (`/health` + `/config/validate`) to confirm the dashboard can reach orchestrator, logging, echo, and renderctl before kicking off workflows
 
 ## Development
 

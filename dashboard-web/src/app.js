@@ -25,7 +25,9 @@ const elements = {
   newTaskFeedback: document.getElementById('new-task-feedback'),
   activityList: document.getElementById('activity-list'),
   activityTemplate: document.getElementById('activity-item-template'),
-  configResults: document.getElementById('config-results')
+  configResults: document.getElementById('config-results'),
+  runConnectivity: document.getElementById('run-connectivity'),
+  connectivityResults: document.getElementById('connectivity-results')
 };
 
 const state = {
@@ -34,7 +36,13 @@ const state = {
   selectedTaskId: null,
   selectedTaskDetail: null,
   events: [],
-  configReports: []
+  configReports: [],
+  connectivity: {
+    running: false,
+    results: [],
+    lastRun: null,
+    error: null
+  }
 };
 
 let settings = loadSettings();
@@ -49,6 +57,7 @@ renderActivity();
 renderTaskDetail();
 renderConfigReports();
 renderSummary();
+renderConnectivity();
 
 if (settings.orchestratorUrl) {
   initializeConnections();
@@ -66,6 +75,9 @@ elements.refreshConfig?.addEventListener('click', () => {
 elements.filterForm?.addEventListener('submit', onFilterSubmit);
 elements.taskTableBody?.addEventListener('click', onTaskRowClick);
 elements.newTaskForm?.addEventListener('submit', onNewTaskSubmit);
+elements.runConnectivity?.addEventListener('click', () => {
+  runConnectivityCheck();
+});
 
 function onSettingsSubmit(event) {
   event.preventDefault();
@@ -234,11 +246,13 @@ function clearStoredSettings() {
   state.events = [];
   state.selectedTaskDetail = null;
   state.selectedTaskId = null;
+  state.connectivity = { running: false, results: [], lastRun: null, error: null };
   renderSummary();
   renderTaskTable();
   renderTaskDetail();
   renderActivity();
   renderConfigReports();
+  renderConnectivity('Provide service URLs above to run connectivity checks.');
   setConnectionStatus('disconnected', 'Disconnected');
 }
 
@@ -285,6 +299,7 @@ async function initializeConnections() {
   setConnectionStatus('connecting', 'Connecting…');
 
   await Promise.allSettled([refreshTasks(), refreshActivity(), refreshConfig()]);
+  await runConnectivityCheck();
   connectWebsocket();
 }
 
@@ -412,6 +427,90 @@ async function refreshConfig() {
 
   state.configReports = reports;
   renderConfigReports();
+}
+
+async function runConnectivityCheck() {
+  const services = [
+    { key: 'orchestrator', name: 'Orchestrator', base: settings.orchestratorUrl },
+    { key: 'logging', name: 'Logging', base: settings.loggingUrl },
+    { key: 'echo', name: 'Echo Agent', base: settings.echoUrl },
+    { key: 'renderctl', name: 'Render Control', base: settings.renderctlUrl }
+  ];
+
+  if (!services.some((svc) => svc.base)) {
+    state.connectivity = { running: false, results: [], lastRun: null, error: null };
+    renderConnectivity('Provide service URLs above to run connectivity checks.');
+    return;
+  }
+
+  state.connectivity.running = true;
+  state.connectivity.error = null;
+  state.connectivity.results = [];
+  renderConnectivity();
+
+  try {
+    const results = await Promise.all(
+      services.map(async (service) => {
+        if (!service.base) {
+          return {
+            ...service,
+            overall: 'missing',
+            checks: [],
+            note: 'No base URL configured.'
+          };
+        }
+
+        const endpoints = [
+          { key: 'health', label: 'Health', path: '/health', summarize: summarizeHealth },
+          { key: 'config', label: 'Config', path: '/config/validate', summarize: summarizeConfig }
+        ];
+
+        const checks = [];
+        let overall = 'ok';
+
+        for (const endpoint of endpoints) {
+          try {
+            const payload = await fetchJsonish(service.base, endpoint.path);
+            const summary = endpoint.summarize(payload);
+            checks.push({
+              key: endpoint.key,
+              label: endpoint.label,
+              status: summary.status,
+              detail: summary.detail || ''
+            });
+            if (summary.status === 'error') {
+              overall = 'error';
+            } else if (summary.status === 'warn' && overall === 'ok') {
+              overall = 'warn';
+            }
+          } catch (err) {
+            checks.push({
+              key: endpoint.key,
+              label: endpoint.label,
+              status: 'error',
+              detail: err.message || 'Request failed'
+            });
+            overall = 'error';
+          }
+        }
+
+        return {
+          ...service,
+          overall,
+          checks
+        };
+      })
+    );
+
+    state.connectivity.results = results;
+    state.connectivity.lastRun = new Date().toISOString();
+  } catch (err) {
+    console.error('Connectivity check failed', err);
+    state.connectivity.error = err.message || 'Connectivity check failed';
+  } finally {
+    state.connectivity.running = false;
+    renderConnectivity();
+  }
 }
 
 function connectWebsocket() {
@@ -730,6 +829,187 @@ function renderConfigReports(fallbackMessage) {
       `;
     })
     .join('');
+}
+
+function renderConnectivity(message) {
+  const container = elements.connectivityResults;
+  if (!container) return;
+
+  if (message) {
+    container.textContent = message;
+    return;
+  }
+
+  if (state.connectivity.running) {
+    container.textContent = 'Checking connectivity...';
+    return;
+  }
+
+  if (state.connectivity.error) {
+    container.textContent = `Connectivity check failed: ${state.connectivity.error}`;
+    return;
+  }
+
+  if (!state.connectivity.results.length) {
+    container.textContent = 'Run connectivity check to verify service reachability.';
+    return;
+  }
+
+  const markup = state.connectivity.results
+    .map((service) => {
+      if (service.overall === 'missing') {
+        return `
+          <div class="connectivity-entry missing">
+            <header>
+              <span>${escapeHtml(service.name)}</span>
+              <span>${escapeHtml(formatOverallStatus('missing'))}</span>
+            </header>
+            <p class="connectivity-note">Provide a base URL to test this service.</p>
+          </div>
+        `;
+      }
+
+      const checks = (service.checks || [])
+        .map((check) => {
+          const detail = check.detail ? ` (${escapeHtml(check.detail)})` : '';
+          return `<li><strong>${escapeHtml(check.label)}</strong>: ${escapeHtml(formatCheckStatus(check.status))}${detail}</li>`;
+        })
+        .join('');
+
+      return `
+        <div class="connectivity-entry ${service.overall}">
+          <header>
+            <span>${escapeHtml(service.name)}</span>
+            <span>${escapeHtml(formatOverallStatus(service.overall))}</span>
+          </header>
+          <ul>${checks}</ul>
+        </div>
+      `;
+    })
+    .join('');
+
+  const lastRun = state.connectivity.lastRun
+    ? `<p class="connectivity-meta">Last run ${escapeHtml(formatTimestamp(state.connectivity.lastRun))}</p>`
+    : '';
+
+  container.innerHTML = `${markup}${lastRun}`;
+}
+
+function formatOverallStatus(status) {
+  switch (status) {
+    case 'ok':
+      return 'OK';
+    case 'warn':
+      return 'Check';
+    case 'error':
+      return 'Error';
+    case 'missing':
+      return 'Not configured';
+    default:
+      return status || 'Unknown';
+  }
+}
+
+function formatCheckStatus(status) {
+  switch (status) {
+    case 'ok':
+      return 'OK';
+    case 'warn':
+      return 'Check';
+    case 'error':
+      return 'Error';
+    default:
+      return status || 'Unknown';
+  }
+}
+
+function summarizeHealth(result) {
+  if (!result) {
+    return { status: 'warn', detail: 'No response' };
+  }
+
+  if (result.json && result.data && typeof result.data === 'object') {
+    const status = result.data.status || 'unknown';
+    if (status === 'ok') {
+      return { status: 'ok', detail: 'status=ok' };
+    }
+    return { status: 'warn', detail: `status=${status}` };
+  }
+
+  if (!result.json && typeof result.data === 'string' && result.data.trim().length) {
+    return { status: 'warn', detail: 'Non-JSON response' };
+  }
+
+  return { status: 'ok', detail: 'Request succeeded' };
+}
+
+function summarizeConfig(result) {
+  if (!result || !result.json || !result.data || typeof result.data !== 'object') {
+    return { status: 'warn', detail: 'Non-JSON response' };
+  }
+
+  const data = result.data;
+  const missingRequired = Object.entries(data.required || {}).filter(([, value]) => value !== 'present');
+  const validationErrors = Array.isArray(data.errors) ? data.errors.length : 0;
+
+  const details = [];
+  if (missingRequired.length) {
+    details.push(`missing: ${missingRequired.map(([key]) => key).join(', ')}`);
+  }
+  if (validationErrors) {
+    details.push(`${validationErrors} validation error(s)`);
+  }
+
+  if (data.status && data.status !== 'ok' && !details.length) {
+    details.push(`status=${data.status}`);
+  }
+
+  if (data.status !== 'ok' || missingRequired.length || validationErrors) {
+    const level = data.status === 'error' || missingRequired.length || validationErrors ? 'error' : 'warn';
+    return {
+      status: level,
+      detail: details.join('; ') || `status=${data.status}`
+    };
+  }
+
+  return {
+    status: 'ok',
+    detail: 'All required env vars present'
+  };
+}
+
+async function fetchJsonish(baseUrl, path) {
+  const url = new URL(path, baseUrl).toString();
+  const headers = buildAuthHeaders();
+  headers.Accept = 'application/json';
+  const response = await fetch(url, { headers });
+  const contentType = response.headers.get('content-type') || '';
+
+  if (!response.ok) {
+    const text = await response.text().catch(() => '');
+    const snippet = text ? ` ${text.slice(0, 200)}` : '';
+    throw new Error(`HTTP ${response.status}${snippet}`.trim());
+  }
+
+  if (contentType.includes('application/json')) {
+    try {
+      const data = await response.json();
+      return { json: true, data };
+    } catch (err) {
+      throw new Error('Invalid JSON response');
+    }
+  }
+
+  const text = await response.text().catch(() => '');
+  if (!text) {
+    return { json: false, data: '' };
+  }
+  try {
+    const data = JSON.parse(text);
+    return { json: true, data };
+  } catch (err) {
+    return { json: false, data: text };
+  }
 }
 
 function toggleSettingsCard() {

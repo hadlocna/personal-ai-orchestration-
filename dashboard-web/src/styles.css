@@ -499,6 +499,66 @@ tr.empty td {
   color: var(--text-muted);
 }
 
+.connectivity-results {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  font-size: 0.9rem;
+}
+
+.connectivity-entry {
+  padding: 0.8rem;
+  border-radius: 12px;
+  border: 1px solid rgba(148, 163, 184, 0.15);
+  background: rgba(15, 23, 42, 0.6);
+}
+
+.connectivity-entry header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 0.4rem;
+  font-weight: 600;
+}
+
+.connectivity-entry.ok header span:last-child {
+  color: var(--success);
+}
+
+.connectivity-entry.warn header span:last-child {
+  color: var(--warning);
+}
+
+.connectivity-entry.error header span:last-child {
+  color: var(--danger);
+}
+
+.connectivity-entry.missing header span:last-child {
+  color: var(--text-muted);
+}
+
+.connectivity-entry ul {
+  margin: 0.5rem 0 0;
+  padding-left: 1.1rem;
+  color: var(--text-muted);
+  font-size: 0.85rem;
+}
+
+.connectivity-entry ul li {
+  margin: 0.25rem 0;
+}
+
+.connectivity-meta {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+}
+
+.connectivity-note {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 0.85rem;
+}
+
 @media (max-width: 720px) {
   .top-bar {
     flex-direction: column;
