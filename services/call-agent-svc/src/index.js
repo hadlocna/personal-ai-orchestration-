@@ -32,9 +32,19 @@ function bootstrap() {
     res.json(buildConfigReport(SERVICE_NAME));
   });
 
-  // Placeholder endpoint; Twilio integration to be added
+  // Dispatch endpoint (test mode for now)
   app.post('/call', (req, res) => {
-    res.status(202).json({ status: 'accepted', echo: req.body || {} });
+    const { to, from, message } = req.body || {};
+    const testMode = (process.env.TWILIO_TEST_MODE || 'true').toLowerCase() !== 'false';
+    const callSid = `CA${Math.random().toString(36).slice(2, 10)}${Date.now()}`;
+    const payload = {
+      status: testMode ? 'simulated' : 'queued',
+      to: to || 'unknown',
+      from: from || process.env.TWILIO_CALLER_ID || 'unknown',
+      message: message || null,
+      callSid
+    };
+    res.status(202).json(payload);
   });
 
   const server = app.listen(PORT, () => {

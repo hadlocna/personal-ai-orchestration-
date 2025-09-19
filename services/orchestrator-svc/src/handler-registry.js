@@ -145,7 +145,7 @@ function buildDispatchExecutor(row, config) {
       }
     }
 
-    const body = includeTask ? { task } : dispatch.body || {};
+    const body = includeTask ? { task } : (dispatch.body || {});
 
     const response = await internalFetch(url, {
       method,
