@@ -72,7 +72,10 @@ const elements = {
   clearLogs: document.getElementById('clear-logs'),
   copyLogs: document.getElementById('copy-logs'),
   dbSnapshot: document.getElementById('db-snapshot'),
-  refreshDbSnapshot: document.getElementById('refresh-db-snapshot')
+  refreshDbSnapshot: document.getElementById('refresh-db-snapshot'),
+  voiceCallForm: document.getElementById('voice-call-form'),
+  voiceCallStatus: document.getElementById('voice-call-status'),
+  voiceCallSubmit: document.getElementById('voice-call-submit')
 };
 
 const state = {
@@ -97,8 +100,25 @@ const state = {
     logs: [],
     events: [],
     lastUpdated: null
-  }
+  },
+  voiceCall: createVoiceCallState()
 };
+
+function createVoiceCallState() {
+  return {
+    status: 'idle',
+    taskId: null,
+    traceId: null,
+    agent: null,
+    result: null,
+    error: null,
+    lastUpdated: null,
+    feedback: {
+      text: 'Enter a destination number to place a test call.',
+      kind: 'info'
+    }
+  };
+}
 
 let settings = loadSettings();
 let orchestratorClient = null;
@@ -115,6 +135,7 @@ renderSummary();
 renderConnectivity();
 renderLogs();
 renderDatabaseSnapshot();
+renderVoiceCall();
 
 if (settings.orchestratorUrl) {
   initializeConnections();
@@ -132,6 +153,7 @@ elements.refreshConfig?.addEventListener('click', () => {
 elements.filterForm?.addEventListener('submit', onFilterSubmit);
 elements.taskTableBody?.addEventListener('click', onTaskRowClick);
 elements.newTaskForm?.addEventListener('submit', onNewTaskSubmit);
+elements.voiceCallForm?.addEventListener('submit', onVoiceCallSubmit);
 elements.runConnectivity?.addEventListener('click', () => {
   runConnectivityCheck();
 });
@@ -235,6 +257,190 @@ async function onNewTaskSubmit(event) {
   }
 }
 
+async function onVoiceCallSubmit(event) {
+  event.preventDefault();
+  if (!elements.voiceCallForm) return;
+
+  if (!orchestratorClient) {
+    setVoiceCallFeedback('Connect to the orchestrator to start a call.', 'error');
+    return;
+  }
+
+  const formData = new FormData(elements.voiceCallForm);
+  const rawPhone = formData.get('phone');
+  const phone = rawPhone ? String(rawPhone).trim() : '';
+  const message = (formData.get('message') || '').toString().trim();
+
+  const sanitizedPhone = phone.replace(/[\s()-]/g, '');
+
+  if (!sanitizedPhone) {
+    setVoiceCallFeedback('Destination number is required.', 'error');
+    return;
+  }
+
+  if (!/^\+?\d{7,}$/.test(sanitizedPhone)) {
+    setVoiceCallFeedback('Enter a valid E.164 phone number (e.g. +15551234567).', 'error');
+    return;
+  }
+
+  state.voiceCall = {
+    ...state.voiceCall,
+    status: 'pending',
+    taskId: null,
+    traceId: null,
+    agent: null,
+    result: null,
+    error: null,
+    lastUpdated: new Date().toISOString()
+  };
+  setVoiceCallFeedback('Dispatching call…', 'info');
+  renderVoiceCall();
+
+  try {
+    const response = await orchestratorClient.createTask({
+      type: 'call.start',
+      source: 'dashboard.voiceTester',
+      agentSlug: 'call-agent',
+      payload: {
+        to: sanitizedPhone,
+        message: message || 'Hello from the Personal AI Orchestration dashboard.'
+      }
+    });
+
+    state.voiceCall = {
+      ...state.voiceCall,
+      status: response?.status || 'queued',
+      taskId: response?.id || null,
+      traceId: response?.traceId || null,
+      agent: response?.agent || null,
+      result: null,
+      error: null,
+      lastUpdated: new Date().toISOString()
+    };
+
+    setVoiceCallFeedback(
+      response?.id
+        ? `Call task ${shortId(response.id)} queued for ${sanitizedPhone}. Monitoring status…`
+        : 'Call dispatched. Monitoring status…',
+      'success'
+    );
+    elements.voiceCallForm.reset();
+    renderVoiceCall();
+
+    recordActivity(
+      buildActivityEntry(
+        'VOICE_CALL',
+        new Date().toISOString(),
+        `Voice call queued for ${sanitizedPhone}`,
+        response || { to: sanitizedPhone }
+      )
+    );
+  } catch (err) {
+    console.error('Failed to queue voice call', err);
+    state.voiceCall.status = 'error';
+    state.voiceCall.error = err.message || 'Failed to dispatch call.';
+    state.voiceCall.lastUpdated = new Date().toISOString();
+    setVoiceCallFeedback(state.voiceCall.error, 'error');
+    renderVoiceCall();
+  }
+}
+
+function setVoiceCallFeedback(message, kind = 'info') {
+  if (!state.voiceCall) return;
+  state.voiceCall.feedback = { text: message, kind };
+  renderVoiceCall();
+}
+
+function renderVoiceCall() {
+  const form = elements.voiceCallForm;
+  const statusEl = elements.voiceCallStatus;
+  const submit = elements.voiceCallSubmit;
+  if (!form || !statusEl) return;
+
+  const disabled = !orchestratorClient;
+  const pending = state.voiceCall.status === 'pending';
+
+  Array.from(form.elements).forEach((field) => {
+    if (!field || typeof field.disabled !== 'boolean') return;
+    if (field === submit) {
+      field.disabled = disabled || pending;
+    } else {
+      field.disabled = disabled;
+    }
+  });
+
+  let text = state.voiceCall.feedback?.text || 'Enter a destination number to place a test call.';
+  let kind = state.voiceCall.feedback?.kind || 'info';
+
+  if (disabled) {
+    text = 'Connect to the orchestrator to initiate calls.';
+    kind = 'info';
+  } else if (pending) {
+    text = 'Dispatching call…';
+    kind = 'info';
+  } else if (state.voiceCall.taskId) {
+    const status = state.voiceCall.status || 'queued';
+    const agent = state.voiceCall.agent?.slug;
+    const output = state.voiceCall.result?.output || state.voiceCall.result || {};
+    const callSid = output?.callSid || output?.call_sid || output?.sid;
+    const callStatus = output?.status;
+    const parts = [`Task ${shortId(state.voiceCall.taskId)} status: ${status}`];
+    if (agent) parts.push(`agent ${agent}`);
+    if (callStatus && callStatus !== status) parts.push(`call ${callStatus}`);
+    if (callSid) parts.push(`SID ${callSid}`);
+    const summary = parts.join(' · ');
+
+    if (kind === 'info') {
+      text = summary;
+    } else {
+      text = `${text} · ${summary}`;
+    }
+
+    if (status === 'error') kind = 'error';
+    else if (status === 'done' || status === 'completed') kind = 'success';
+    else kind = kind === 'success' || kind === 'error' ? kind : 'info';
+  }
+
+  statusEl.textContent = text;
+  statusEl.className = 'form-feedback';
+  if (kind === 'success' || kind === 'error') {
+    statusEl.classList.add(kind);
+  }
+}
+
+function updateVoiceCallFromTask(task) {
+  if (!task || state.voiceCall.taskId !== task.id) return;
+  state.voiceCall.status = task.status || state.voiceCall.status;
+  state.voiceCall.agent = formatAgentMeta(task) || state.voiceCall.agent;
+  state.voiceCall.result = task.result || null;
+  state.voiceCall.lastUpdated = new Date().toISOString();
+
+  if (task.status === 'error') {
+    const message = task.error?.message || state.voiceCall.error || 'Call failed.';
+    state.voiceCall.error = message;
+    setVoiceCallFeedback(`Call failed: ${message}`, 'error');
+    return;
+  }
+
+  if (task.status === 'done' || task.status === 'completed') {
+    const output = state.voiceCall.result?.output || state.voiceCall.result || {};
+    const callSid = output?.callSid || output?.call_sid || output?.sid;
+    setVoiceCallFeedback(`Call completed${callSid ? ` (SID ${callSid})` : ''}.`, 'success');
+    return;
+  }
+
+  if (task.status === 'running') {
+    setVoiceCallFeedback('Call in progress…', 'info');
+  } else {
+    setVoiceCallFeedback(`Call status: ${task.status}`, 'info');
+  }
+}
+
+function resetVoiceCallState() {
+  state.voiceCall = createVoiceCallState();
+  renderVoiceCall();
+}
+
 function loadSettings() {
   if (typeof localStorage === 'undefined') {
     return { ...defaultSettings };
@@ -296,6 +502,7 @@ function clearStoredSettings() {
     events: [],
     lastUpdated: null
   };
+  resetVoiceCallState();
   renderSummary();
   renderTaskTable();
   renderTaskDetail();
@@ -303,6 +510,7 @@ function clearStoredSettings() {
   renderConfigReports();
   renderConnectivity('Provide service URLs above to run connectivity checks.');
   renderDatabaseSnapshot('Connect to load database state.');
+  renderVoiceCall();
   appendLog('info', 'Settings', 'Connections reset to defaults.');
   setConnectionStatus('disconnected', 'Disconnected');
 }
@@ -340,6 +548,8 @@ async function initializeConnections() {
   } catch (err) {
     console.error('Failed to create orchestrator client', err);
     setConnectionStatus('error', 'Invalid orchestrator URL');
+    orchestratorClient = null;
+    renderVoiceCall();
     return;
   }
 
@@ -355,6 +565,8 @@ async function initializeConnections() {
     console.warn('Failed to create logging client', err);
     loggingClient = null;
   }
+
+  renderVoiceCall();
 
   setConnectionStatus('connecting', 'Connecting…');
   appendLog('info', 'Connections', `Connecting to orchestrator at ${settings.orchestratorUrl}`);
@@ -381,6 +593,9 @@ async function refreshTasks() {
     });
     renderSummary();
     renderTaskTable();
+    if (state.voiceCall.taskId && state.tasks.has(state.voiceCall.taskId)) {
+      updateVoiceCallFromTask(state.tasks.get(state.voiceCall.taskId));
+    }
   } catch (err) {
     console.error('Failed to fetch tasks', err);
     recordActivity({
@@ -863,6 +1078,9 @@ function handleWebsocketFrame(frame) {
           // refresh detail from latest data if version changed
           loadTaskDetail(data.id);
         }
+        if (state.voiceCall.taskId && data.id === state.voiceCall.taskId) {
+          updateVoiceCallFromTask(data);
+        }
         recordActivity(
           buildActivityEntry(
             'TASK_UPDATE',
@@ -896,6 +1114,13 @@ function handleWebsocketFrame(frame) {
           data
         )
       );
+      if (data?.taskId && data.taskId === state.voiceCall.taskId) {
+        if (data.kind === 'dispatch_ack') {
+          setVoiceCallFeedback('Call dispatched to telephony agent.', 'info');
+        } else if (data.kind === 'assignment') {
+          setVoiceCallFeedback('Call assigned to agent.', 'info');
+        }
+      }
       break;
     }
     case 'LOG': {

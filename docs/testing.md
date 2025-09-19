@@ -39,12 +39,13 @@ This guide walks operators and developers through a repeatable manual regression
 2. Confirm connection status turns green and the activity stream starts updating.
 3. Verify the task summary counts match `GET /tasks` results.
 4. Use the dashboard form to queue an `echo` task. Observe live activity updates and confirm task detail view shows payload, result, and events.
-5. Run the Config Inspector once orchestrator, logging, echo, and renderctl URLs are set; verify all services report `status: ok`.
-6. Trigger the Service Connectivity diagnostic and verify:
+5. Use the **Voice Call Tester** card to place a test call (Twilio test mode). Expect a `call.start` task to appear, watch it transition through statuses, and confirm any assigned call SID or agent metadata surfaces in the activity stream.
+6. Run the Config Inspector once orchestrator, logging, echo, and renderctl URLs are set; verify all services report `status: ok`.
+7. Trigger the Service Connectivity diagnostic and verify:
    - Internal services (orchestrator, logging, echo, renderctl) pass both health and config checks.
    - External integrations (Twilio, HubSpot, OpenAI, Google) report `OK` when valid credentials/API keys are configured, or surface actionable warnings/errors otherwise.
-7. Confirm settings persist after page refresh (localStorage).
-8. (Optional) Run `npm run test:connectivity` from the monorepo root to automate the internal/external API checks using the current environment variables.
+8. Confirm settings persist after page refresh (localStorage).
+9. (Optional) Run `npm run test:connectivity` from the monorepo root to automate the internal/external API checks using the current environment variables.
 
 ## 7. Render Control Regression
 1. List services via `GET /render/services` and confirm metadata reflects Render dashboard state (IDs, names, status).

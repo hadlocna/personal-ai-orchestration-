@@ -122,6 +122,8 @@ body {
 .settings-grid input,
 .new-task-form input,
 .new-task-form textarea,
+.voice-call-form input,
+.voice-call-form textarea,
 .filters input,
 .filters select {
   width: 100%;
@@ -390,6 +392,23 @@ tr.empty td {
   resize: vertical;
   min-height: 120px;
   font-family: var(--mono);
+}
+
+.voice-call-form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
+}
+
+.voice-call-form label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  font-size: 0.9rem;
+}
+
+.voice-call-form button {
+  align-self: flex-start;
 }
 
 .form-feedback {

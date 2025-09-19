@@ -9,7 +9,8 @@
 1. **Platform Foundations for Multi-Agent Expansion**
    - ✅ Extend `infra/config.schema.json`, `.env.example`, and service config reports with Twilio/OpenAI credentials, webhook secrets, and agent URLs. *(Codex agent — 2025-09-19)*
    - ✅ Author follow-on migrations for communication dossiers (calls, messages, emails, artifacts) and agent registry metadata. *(Codex agent — 2025-09-19)*
-   - ✅ Refactor the orchestrator to load handlers from a registry, enable dispatch-only handlers, and capture agent assignment metadata. (Codex agent — 2025-09-19)
+   - ✅ Refactor the orchestrator to load handlers from a registry, enable dispatch-only handlers, and capture agent assignment metadata. *(Codex agent — 2025-09-19)*
+   - ✅ Implement Google OAuth flows (Gmail + Calendar scopes) with encrypted token storage and dashboard operator controls. *(Codex agent — 2025-09-19)*
    - ✅ Add signature verification helpers to `@repo/common` for webhook-driven services. *(Codex agent — 2025-09-19)*
    - ⬜ Update local tooling and Render blueprints to include new agents out of the box.
 
@@ -35,6 +36,7 @@
 
 6. **Dashboard & Operator UX**
    - Surface channel filters, avatars, and artifacts in the task table/detail views.
+   - ✅ Provide a voice call tester UI to trigger outbound calls and observe task progression. *(Codex agent — 2025-09-19)*
    - Provide real-time call visualization and inbound queue management.
    - Add Phase 2 services to config + connectivity checks with Twilio sandbox support.
 

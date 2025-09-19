@@ -166,6 +166,24 @@
             </form>
           </article>
 
+          <article class="card" id="voice-call-card">
+            <header class="card-header">
+              <h2>Voice Call Tester</h2>
+            </header>
+            <form id="voice-call-form" class="voice-call-form">
+              <label>
+                <span>Destination Number</span>
+                <input name="phone" type="tel" placeholder="+15551234567" required />
+              </label>
+              <label class="full">
+                <span>Message Prompt <small>(optional)</small></span>
+                <textarea name="message" rows="4" placeholder="Say hello and introduce yourself"></textarea>
+              </label>
+              <button type="submit" class="primary" id="voice-call-submit">Start Call</button>
+              <p class="form-feedback" id="voice-call-status"></p>
+            </form>
+          </article>
+
           <article class="card" id="db-snapshot-card">
             <header class="card-header">
               <h2>Database Snapshot</h2>
