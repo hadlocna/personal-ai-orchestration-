@@ -1259,33 +1259,33 @@ function buildIntegrationTargets(config) {
     {
       key: 'twilio',
       name: 'Twilio API',
-      isConfigured: Boolean(config.twilioAccountSid && config.twilioAuthToken),
-      missingNote: 'Provide Twilio Account SID and Auth Token to test this integration.',
-      skipLog: 'Twilio credentials missing; skipping check.',
+      isConfigured: Boolean(config.orchestratorUrl) || Boolean(config.twilioAccountSid && config.twilioAuthToken),
+      missingNote: 'Provide Orchestrator URL or Twilio credentials to test this integration.',
+      skipLog: 'No orchestrator URL or Twilio credentials; skipping check.',
       run: () => checkTwilioIntegration(config)
     },
     {
       key: 'hubspot',
       name: 'HubSpot API',
-      isConfigured: Boolean(config.hubspotApiKey),
-      missingNote: 'Provide a HubSpot private app token to test this integration.',
-      skipLog: 'HubSpot token missing; skipping check.',
+      isConfigured: Boolean(config.orchestratorUrl) || Boolean(config.hubspotApiKey),
+      missingNote: 'Provide Orchestrator URL or HubSpot token to test this integration.',
+      skipLog: 'No orchestrator URL or HubSpot token; skipping check.',
       run: () => checkHubspotIntegration(config)
     },
     {
       key: 'openai',
       name: 'OpenAI API',
-      isConfigured: Boolean(config.openaiApiKey),
-      missingNote: 'Provide an OpenAI API key to test this integration.',
-      skipLog: 'OpenAI API key missing; skipping check.',
+      isConfigured: Boolean(config.orchestratorUrl) || Boolean(config.openaiApiKey),
+      missingNote: 'Provide Orchestrator URL or OpenAI API key to test this integration.',
+      skipLog: 'No orchestrator URL or OpenAI API key; skipping check.',
       run: () => checkOpenAiIntegration(config)
     },
     {
       key: 'google',
       name: 'Google APIs',
-      isConfigured: Boolean(config.googleApiKey),
-      missingNote: 'Provide a Google API key to test this integration.',
-      skipLog: 'Google API key missing; skipping check.',
+      isConfigured: Boolean(config.orchestratorUrl) || Boolean(config.googleApiKey),
+      missingNote: 'Provide Orchestrator URL or Google API key to test this integration.',
+      skipLog: 'No orchestrator URL or Google API key; skipping check.',
       run: () => checkGoogleIntegration(config)
     }
   ];
