@@ -43,16 +43,17 @@ async function initDb() {
       )
     `);
 
+    // Ensure columns exist before creating indexes that depend on them
+    await client.query('ALTER TABLE tasks ADD COLUMN IF NOT EXISTS agent_id UUID');
+    await client.query('ALTER TABLE tasks ADD COLUMN IF NOT EXISTS agent_slug TEXT');
+    await client.query('ALTER TABLE tasks ADD COLUMN IF NOT EXISTS agent_display_name TEXT');
+    await client.query('ALTER TABLE tasks ADD COLUMN IF NOT EXISTS agent_channel TEXT');
+
     await client.query('CREATE INDEX IF NOT EXISTS idx_tasks_updated ON tasks(updated_at DESC)');
     await client.query('CREATE INDEX IF NOT EXISTS idx_tasks_status ON tasks(status)');
     await client.query('CREATE INDEX IF NOT EXISTS idx_tasks_corr ON tasks(correlation_id)');
     await client.query('CREATE INDEX IF NOT EXISTS idx_tasks_trace ON tasks(trace_id)');
     await client.query('CREATE INDEX IF NOT EXISTS idx_tasks_agent_slug ON tasks(agent_slug)');
-
-    await client.query('ALTER TABLE tasks ADD COLUMN IF NOT EXISTS agent_id UUID');
-    await client.query('ALTER TABLE tasks ADD COLUMN IF NOT EXISTS agent_slug TEXT');
-    await client.query('ALTER TABLE tasks ADD COLUMN IF NOT EXISTS agent_display_name TEXT');
-    await client.query('ALTER TABLE tasks ADD COLUMN IF NOT EXISTS agent_channel TEXT');
 
     await client.query(`
       CREATE TABLE IF NOT EXISTS task_events (
