@@ -47,6 +47,15 @@ function bootstrap() {
     res.status(202).json(payload);
   });
 
+  // Webhook placeholders with basic auth; signature verification to be added
+  app.post('/webhooks/twilio/status', (req, res) => {
+    res.status(204).end();
+  });
+
+  app.post('/webhooks/twilio/media', (req, res) => {
+    res.status(204).end();
+  });
+
   const server = app.listen(PORT, () => {
     console.log(`${SERVICE_NAME} listening on port ${PORT}`);
   });
