@@ -35,7 +35,11 @@ async function initDb() {
         error JSONB,
         correlation_id TEXT,
         trace_id TEXT NOT NULL,
-        version INTEGER NOT NULL DEFAULT 0
+        version INTEGER NOT NULL DEFAULT 0,
+        agent_id UUID,
+        agent_slug TEXT,
+        agent_display_name TEXT,
+        agent_channel TEXT
       )
     `);
 
@@ -43,6 +47,12 @@ async function initDb() {
     await client.query('CREATE INDEX IF NOT EXISTS idx_tasks_status ON tasks(status)');
     await client.query('CREATE INDEX IF NOT EXISTS idx_tasks_corr ON tasks(correlation_id)');
     await client.query('CREATE INDEX IF NOT EXISTS idx_tasks_trace ON tasks(trace_id)');
+    await client.query('CREATE INDEX IF NOT EXISTS idx_tasks_agent_slug ON tasks(agent_slug)');
+
+    await client.query('ALTER TABLE tasks ADD COLUMN IF NOT EXISTS agent_id UUID');
+    await client.query('ALTER TABLE tasks ADD COLUMN IF NOT EXISTS agent_slug TEXT');
+    await client.query('ALTER TABLE tasks ADD COLUMN IF NOT EXISTS agent_display_name TEXT');
+    await client.query('ALTER TABLE tasks ADD COLUMN IF NOT EXISTS agent_channel TEXT');
 
     await client.query(`
       CREATE TABLE IF NOT EXISTS task_events (
@@ -81,17 +91,33 @@ async function initDb() {
   }
 }
 
-async function createTask({ type, payload, source, correlationId, traceId, actor }) {
+async function createTask({ type, payload, source, correlationId, traceId, actor, agent }) {
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
     const id = uuidv4();
 
+    const agentId = agent?.id || null;
+    const agentSlug = agent?.slug || null;
+    const agentDisplayName = agent?.displayName || null;
+    const agentChannel = agent?.channel || null;
+
     const { rows } = await client.query(
-      `INSERT INTO tasks (id, type, status, source, payload, correlation_id, trace_id)
-       VALUES ($1, $2, 'queued', $3, $4::jsonb, $5, $6)
+      `INSERT INTO tasks (id, type, status, source, payload, correlation_id, trace_id, agent_id, agent_slug, agent_display_name, agent_channel)
+       VALUES ($1, $2, 'queued', $3, $4::jsonb, $5, $6, $7, $8, $9, $10)
        RETURNING *`,
-      [id, type, source, JSON.stringify(payload ?? {}), correlationId || null, traceId]
+      [
+        id,
+        type,
+        source,
+        JSON.stringify(payload ?? {}),
+        correlationId || null,
+        traceId,
+        agentId,
+        agentSlug,
+        agentDisplayName,
+        agentChannel
+      ]
     );
 
     const task = rows[0];
@@ -109,8 +135,25 @@ async function createTask({ type, payload, source, correlationId, traceId, actor
       traceId
     });
 
+    let assignmentEvent = null;
+    if (agentSlug) {
+      assignmentEvent = await insertTaskEvent(client, {
+        taskId: id,
+        actor,
+        kind: 'agent_assigned',
+        data: {
+          agentId,
+          agentSlug,
+          agentDisplayName,
+          agentChannel
+        },
+        correlationId: correlationId || null,
+        traceId
+      });
+    }
+
     await client.query('COMMIT');
-    return { task, event };
+    return { task, event, assignmentEvent };
   } catch (err) {
     await client.query('ROLLBACK');
     throw err;
@@ -285,6 +328,20 @@ async function insertTaskEvent(client, { taskId, actor, kind, data, correlationI
   return rows[0];
 }
 
+async function listActiveAgents() {
+  try {
+    const { rows } = await pool.query(
+      'SELECT * FROM agent_registry WHERE COALESCE(is_active, true) = true ORDER BY display_name'
+    );
+    return rows;
+  } catch (err) {
+    if (err.code === '42P01') {
+      return [];
+    }
+    throw err;
+  }
+}
+
 module.exports = {
   pool,
   initDb,
@@ -293,5 +350,7 @@ module.exports = {
   getTaskWithEvents,
   listTasks,
   applyTaskPatch,
-  ConflictError
+  ConflictError,
+  insertTaskEvent,
+  listActiveAgents
 };
