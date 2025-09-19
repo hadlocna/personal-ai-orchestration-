@@ -1,10 +1,18 @@
 const { WebSocketServer } = require('ws');
 const { URL } = require('url');
-const { authenticateRequest, AUTH_CHALLENGE, INTERNAL_HEADER } = require('@repo/common');
+const {
+  authenticateRequest,
+  AUTH_CHALLENGE,
+  INTERNAL_HEADER,
+  parseOrigins,
+  normalizeOrigin
+} = require('@repo/common');
 
 function setupWebsocket(server) {
   const clients = new Set();
-  const allowedOrigins = parseAllowedOrigins(process.env.WS_ALLOWED_ORIGINS);
+  const allowedOrigins = parseAllowedOrigins(
+    process.env.WS_ALLOWED_ORIGINS || process.env.DASHBOARD_ORIGIN || process.env.PUBLIC_DOMAIN
+  );
   const wss = new WebSocketServer({ noServer: true });
 
   const handleUpgrade = (request, socket, head) => {
@@ -64,17 +72,14 @@ function setupWebsocket(server) {
 }
 
 function parseAllowedOrigins(value) {
-  if (!value) return [];
-  return value
-    .split(',')
-    .map((origin) => origin.trim())
-    .filter(Boolean);
+  return parseOrigins(value);
 }
 
 function isOriginAllowed(allowedOrigins, origin) {
   if (!allowedOrigins.length) return true;
   if (!origin) return false;
-  return allowedOrigins.includes(origin);
+  const normalized = normalizeOrigin(origin);
+  return allowedOrigins.includes(normalized);
 }
 
 function buildAuthContext(request) {

@@ -3,15 +3,45 @@ import { createApiClient, encodeBasicAuth } from './api/client.js';
 const STORAGE_KEY = 'paio-dashboard-settings';
 const MAX_ACTIVITY_ENTRIES = 200;
 const MAX_LOG_ENTRIES = 300;
-const DEFAULT_SETTINGS = Object.freeze({
+const SETTINGS_KEYS = [
+  'orchestratorUrl',
+  'websocketUrl',
+  'loggingUrl',
+  'echoUrl',
+  'renderctlUrl',
+  'username',
+  'password',
+  'twilioAccountSid',
+  'twilioAuthToken',
+  'twilioBaseUrl',
+  'hubspotApiKey',
+  'hubspotBaseUrl',
+  'openaiApiKey',
+  'openaiBaseUrl',
+  'googleApiKey',
+  'googleBaseUrl'
+];
+
+const BASE_DEFAULT_SETTINGS = Object.freeze({
   orchestratorUrl: 'https://personal-ai-orchestration.onrender.com',
   websocketUrl: '',
   loggingUrl: 'https://logging-svc.onrender.com',
   echoUrl: 'https://echo-agent-svc.onrender.com',
   renderctlUrl: 'https://renderctl-svc.onrender.com',
   username: '',
-  password: ''
+  password: '',
+  twilioAccountSid: '',
+  twilioAuthToken: '',
+  twilioBaseUrl: 'https://api.twilio.com',
+  hubspotApiKey: '',
+  hubspotBaseUrl: 'https://api.hubapi.com',
+  openaiApiKey: '',
+  openaiBaseUrl: 'https://api.openai.com',
+  googleApiKey: '',
+  googleBaseUrl: 'https://www.googleapis.com'
 });
+
+const defaultSettings = buildDefaultSettings();
 
 const elements = {
   connectionStatus: document.getElementById('connection-status'),
@@ -56,7 +86,8 @@ const state = {
     running: false,
     results: [],
     lastRun: null,
-    error: null
+    error: null,
+    dbSummary: null
   },
   logs: [],
   dbSnapshot: {
@@ -117,6 +148,15 @@ function onSettingsSubmit(event) {
     loggingUrl: formData.get('loggingUrl')?.trim() || '',
     echoUrl: formData.get('echoUrl')?.trim() || '',
     renderctlUrl: formData.get('renderctlUrl')?.trim() || '',
+    twilioAccountSid: formData.get('twilioAccountSid')?.trim() || '',
+    twilioAuthToken: formData.get('twilioAuthToken')?.trim() || '',
+    twilioBaseUrl: valueOrDefault(formData.get('twilioBaseUrl'), defaultSettings.twilioBaseUrl),
+    hubspotApiKey: formData.get('hubspotApiKey')?.trim() || '',
+    hubspotBaseUrl: valueOrDefault(formData.get('hubspotBaseUrl'), defaultSettings.hubspotBaseUrl),
+    openaiApiKey: formData.get('openaiApiKey')?.trim() || '',
+    openaiBaseUrl: valueOrDefault(formData.get('openaiBaseUrl'), defaultSettings.openaiBaseUrl),
+    googleApiKey: formData.get('googleApiKey')?.trim() || '',
+    googleBaseUrl: valueOrDefault(formData.get('googleBaseUrl'), defaultSettings.googleBaseUrl),
     username: formData.get('username')?.trim() || '',
     password: formData.get('password') || ''
   };
@@ -197,34 +237,38 @@ async function onNewTaskSubmit(event) {
 
 function loadSettings() {
   if (typeof localStorage === 'undefined') {
-    return { ...DEFAULT_SETTINGS };
+    return { ...defaultSettings };
   }
 
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) {
-      return { ...DEFAULT_SETTINGS };
+      return { ...defaultSettings };
     }
     const parsed = JSON.parse(raw);
-    return {
-      orchestratorUrl: parsed.orchestratorUrl || DEFAULT_SETTINGS.orchestratorUrl,
-      websocketUrl: parsed.websocketUrl || DEFAULT_SETTINGS.websocketUrl,
-      loggingUrl: parsed.loggingUrl || DEFAULT_SETTINGS.loggingUrl,
-      echoUrl: parsed.echoUrl || DEFAULT_SETTINGS.echoUrl,
-      renderctlUrl: parsed.renderctlUrl || DEFAULT_SETTINGS.renderctlUrl,
-      username: parsed.username || DEFAULT_SETTINGS.username,
-      password: parsed.password || DEFAULT_SETTINGS.password
-    };
+    const merged = {};
+    SETTINGS_KEYS.forEach((key) => {
+      if (Object.prototype.hasOwnProperty.call(parsed, key)) {
+        merged[key] = parsed[key];
+      } else {
+        merged[key] = defaultSettings[key] ?? '';
+      }
+    });
+    return merged;
   } catch (err) {
     console.warn('Failed to load stored settings', err);
-    return { ...DEFAULT_SETTINGS };
+    return { ...defaultSettings };
   }
 }
 
 function saveSettings(next) {
   if (typeof localStorage === 'undefined') return;
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
+    const payload = {};
+    SETTINGS_KEYS.forEach((key) => {
+      payload[key] = next[key] ?? '';
+    });
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
   } catch (err) {
     console.warn('Failed to persist settings', err);
   }
@@ -234,7 +278,7 @@ function clearStoredSettings() {
   if (typeof localStorage !== 'undefined') {
     localStorage.removeItem(STORAGE_KEY);
   }
-  settings = { ...DEFAULT_SETTINGS };
+  settings = { ...defaultSettings };
   applySettingsToForm(settings);
   disconnectWebsocket();
   orchestratorClient = null;
@@ -243,7 +287,7 @@ function clearStoredSettings() {
   state.events = [];
   state.selectedTaskDetail = null;
   state.selectedTaskId = null;
-  state.connectivity = { running: false, results: [], lastRun: null, error: null };
+  state.connectivity = { running: false, results: [], lastRun: null, error: null, dbSummary: null };
   state.dbSnapshot = {
     loading: false,
     error: null,
@@ -271,6 +315,15 @@ function applySettingsToForm(config) {
   form.elements.loggingUrl.value = config.loggingUrl || '';
   form.elements.echoUrl.value = config.echoUrl || '';
   form.elements.renderctlUrl.value = config.renderctlUrl || '';
+  if (form.elements.twilioAccountSid) form.elements.twilioAccountSid.value = config.twilioAccountSid || '';
+  if (form.elements.twilioAuthToken) form.elements.twilioAuthToken.value = config.twilioAuthToken || '';
+  if (form.elements.twilioBaseUrl) form.elements.twilioBaseUrl.value = config.twilioBaseUrl || '';
+  if (form.elements.hubspotApiKey) form.elements.hubspotApiKey.value = config.hubspotApiKey || '';
+  if (form.elements.hubspotBaseUrl) form.elements.hubspotBaseUrl.value = config.hubspotBaseUrl || '';
+  if (form.elements.openaiApiKey) form.elements.openaiApiKey.value = config.openaiApiKey || '';
+  if (form.elements.openaiBaseUrl) form.elements.openaiBaseUrl.value = config.openaiBaseUrl || '';
+  if (form.elements.googleApiKey) form.elements.googleApiKey.value = config.googleApiKey || '';
+  if (form.elements.googleBaseUrl) form.elements.googleBaseUrl.value = config.googleBaseUrl || '';
   form.elements.username.value = config.username || '';
   form.elements.password.value = config.password || '';
 }
@@ -506,12 +559,53 @@ async function refreshDatabaseSnapshot() {
 
   if (errors.length) {
     snapshot.error = `One or more queries failed: ${errors.join('; ')}`;
+    state.connectivity.dbSummary = {
+      key: 'database',
+      name: 'Database (Postgres)',
+      overall: 'error',
+      category: 'database',
+      checks: [
+        {
+          key: 'snapshot',
+          label: 'Snapshot',
+          status: 'error',
+          detail: snapshot.error
+        }
+      ]
+    };
   } else {
     snapshot.error = null;
     appendLog('info', 'Database Snapshot', 'Snapshot refreshed successfully.');
+    state.connectivity.dbSummary = {
+      key: 'database',
+      name: 'Database (Postgres)',
+      overall: 'ok',
+      category: 'database',
+      checks: [
+        {
+          key: 'tasks',
+          label: 'Tasks',
+          status: snapshot.tasks.length ? 'ok' : 'warn',
+          detail: `${snapshot.tasks.length} recent`
+        },
+        {
+          key: 'logs',
+          label: 'Logs',
+          status: snapshot.logs.length ? 'ok' : 'warn',
+          detail: `${snapshot.logs.length} recent`
+        },
+        {
+          key: 'events',
+          label: 'Task Events',
+          status: snapshot.events.length ? 'ok' : 'warn',
+          detail: `${snapshot.events.length} recent`
+        }
+      ]
+    };
   }
 
   renderDatabaseSnapshot();
+  renderConnectivity();
 }
 
 async function runConnectivityCheck() {
@@ -522,7 +616,11 @@ async function runConnectivityCheck() {
     { key: 'renderctl', name: 'Render Control', base: settings.renderctlUrl }
   ];
 
-  if (!services.some((svc) => svc.base)) {
+  const integrations = buildIntegrationTargets(settings);
+  const hasServiceTargets = services.some((svc) => svc.base);
+  const hasIntegrationTargets = integrations.some((integration) => integration.isConfigured);
+
+  if (!hasServiceTargets && !hasIntegrationTargets) {
     state.connectivity = { running: false, results: [], lastRun: null, error: null };
     renderConnectivity('Provide service URLs above to run connectivity checks.');
     appendLog('warn', 'Connectivity', 'No service URLs configured; check skipped.');
@@ -532,18 +630,20 @@ async function runConnectivityCheck() {
   state.connectivity.running = true;
   state.connectivity.error = null;
   state.connectivity.results = [];
+  state.connectivity.dbSummary = null;
   renderConnectivity();
   appendLog('info', 'Connectivity', 'Starting connectivity diagnostic run.');
 
   try {
-    const results = await Promise.all(
+    const serviceResults = await Promise.all(
       services.map(async (service) => {
         if (!service.base) {
           return {
             ...service,
             overall: 'missing',
             checks: [],
-            note: 'No base URL configured.'
+            note: 'No base URL configured.',
+            category: 'service'
           };
         }
 
@@ -588,12 +688,59 @@ async function runConnectivityCheck() {
         return {
           ...service,
           overall,
-          checks
+          checks,
+          category: 'service'
         };
       })
     );
 
-    state.connectivity.results = results;
+    const integrationResults = await Promise.all(
+      integrations.map(async (integration) => {
+        if (!integration.isConfigured) {
+          appendLog('warn', integration.name, integration.skipLog || 'Credentials missing; skipping.');
+          return {
+            name: integration.name,
+            overall: 'missing',
+            checks: [],
+            note: integration.missingNote,
+            category: 'integration'
+          };
+        }
+
+        appendLog('info', integration.name, 'Checking API credentials');
+        try {
+          const outcome = await integration.run();
+          const overall = outcome.overall || 'ok';
+          const checks = outcome.checks || [];
+          const logLevel = overall === 'ok' ? 'info' : overall === 'warn' ? 'warn' : 'error';
+          appendLog(logLevel, integration.name, `Check completed with status ${overall.toUpperCase()}.`);
+          return {
+            name: integration.name,
+            overall,
+            checks,
+            category: 'integration'
+          };
+        } catch (err) {
+          const detail = inferNetworkError(err);
+          appendLog('error', integration.name, 'Request failed', detail);
+          return {
+            name: integration.name,
+            overall: 'error',
+            checks: [
+              {
+                key: 'request',
+                label: 'Request',
+                status: 'error',
+                detail
+              }
+            ],
+            category: 'integration'
+          };
+        }
+      })
+    );
+
+    state.connectivity.results = [...serviceResults, ...integrationResults];
     state.connectivity.lastRun = new Date().toISOString();
     appendLog('info', 'Connectivity', 'Connectivity run completed. Review results above.');
   } catch (err) {
@@ -947,21 +1094,32 @@ function renderConnectivity(message) {
     return;
   }
 
-  if (!state.connectivity.results.length) {
+  const results = [...state.connectivity.results];
+  if (state.connectivity.dbSummary) {
+    results.push(state.connectivity.dbSummary);
+  }
+
+  if (!results.length) {
     container.textContent = 'Run connectivity check to verify service reachability.';
     return;
   }
 
-  const markup = state.connectivity.results
+  const markup = results
     .map((service) => {
       if (service.overall === 'missing') {
+        const note = service.note ||
+          (service.category === 'integration'
+            ? 'Provide credentials to test this integration.'
+            : service.category === 'database'
+              ? 'Run a database snapshot to verify connectivity.'
+              : 'Provide a base URL to test this service.');
         return `
           <div class="connectivity-entry missing">
             <header>
               <span>${escapeHtml(service.name)}</span>
               <span>${escapeHtml(formatOverallStatus('missing'))}</span>
             </header>
-            <p class="connectivity-note">Provide a base URL to test this service.</p>
+            <p class="connectivity-note">${escapeHtml(note)}</p>
           </div>
         `;
       }
@@ -1073,6 +1231,253 @@ function summarizeConfig(result) {
     status: 'ok',
     detail: 'All required env vars present'
   };
+}
+
+function buildIntegrationTargets(config) {
+  return [
+    {
+      key: 'twilio',
+      name: 'Twilio API',
+      isConfigured: Boolean(config.twilioAccountSid && config.twilioAuthToken),
+      missingNote: 'Provide Twilio Account SID and Auth Token to test this integration.',
+      skipLog: 'Twilio credentials missing; skipping check.',
+      run: () => checkTwilioIntegration(config)
+    },
+    {
+      key: 'hubspot',
+      name: 'HubSpot API',
+      isConfigured: Boolean(config.hubspotApiKey),
+      missingNote: 'Provide a HubSpot private app token to test this integration.',
+      skipLog: 'HubSpot token missing; skipping check.',
+      run: () => checkHubspotIntegration(config)
+    },
+    {
+      key: 'openai',
+      name: 'OpenAI API',
+      isConfigured: Boolean(config.openaiApiKey),
+      missingNote: 'Provide an OpenAI API key to test this integration.',
+      skipLog: 'OpenAI API key missing; skipping check.',
+      run: () => checkOpenAiIntegration(config)
+    },
+    {
+      key: 'google',
+      name: 'Google APIs',
+      isConfigured: Boolean(config.googleApiKey),
+      missingNote: 'Provide a Google API key to test this integration.',
+      skipLog: 'Google API key missing; skipping check.',
+      run: () => checkGoogleIntegration(config)
+    }
+  ];
+}
+
+async function checkTwilioIntegration(config) {
+  const accountSid = (config.twilioAccountSid || '').trim();
+  const authToken = (config.twilioAuthToken || '').trim();
+  if (!accountSid || !authToken) {
+    throw new Error('Missing Twilio credentials');
+  }
+
+  const baseUrl = resolveBaseUrl(config.twilioBaseUrl, defaultSettings.twilioBaseUrl);
+  const targetUrl = new URL(`/2010-04-01/Accounts/${encodeURIComponent(accountSid)}.json`, baseUrl).toString();
+  const credentials = encodeBasicToken(accountSid, authToken);
+
+  const response = await fetch(targetUrl, {
+    headers: {
+      Authorization: `Basic ${credentials}`,
+      Accept: 'application/json'
+    }
+  });
+
+  const bodyText = await response.text();
+  if (!response.ok) {
+    const snippet = bodyText ? bodyText.slice(0, 120) : '';
+    throw new Error(`HTTP ${response.status}${snippet ? ` ${snippet}` : ''}`.trim());
+  }
+
+  let data = {};
+  if (bodyText) {
+    try {
+      data = JSON.parse(bodyText);
+    } catch (err) {
+      throw new Error('Invalid JSON response from Twilio');
+    }
+  }
+
+  const accountStatus = typeof data.status === 'string' ? data.status.toLowerCase() : '';
+  const friendly = data.friendly_name || data.friendlyName || accountSid;
+  const status = accountStatus && accountStatus !== 'active' ? 'warn' : 'ok';
+  const detail = accountStatus && accountStatus !== 'active'
+    ? `Account ${friendly} (status ${accountStatus})`
+    : `Account ${friendly}`;
+
+  return {
+    overall: status,
+    checks: [
+      {
+        key: 'credentials',
+        label: 'Credentials',
+        status,
+        detail
+      }
+    ]
+  };
+}
+
+async function checkHubspotIntegration(config) {
+  const token = (config.hubspotApiKey || '').trim();
+  if (!token) {
+    throw new Error('Missing HubSpot token');
+  }
+
+  const baseUrl = resolveBaseUrl(config.hubspotBaseUrl, defaultSettings.hubspotBaseUrl);
+  const requestUrl = new URL('/crm/v3/owners/', baseUrl);
+  requestUrl.searchParams.set('limit', '1');
+
+  const response = await fetch(requestUrl.toString(), {
+    headers: {
+      Authorization: `Bearer ${token}`,
+      Accept: 'application/json'
+    }
+  });
+
+  const text = await response.text();
+  if (!response.ok) {
+    const snippet = text ? text.slice(0, 120) : '';
+    throw new Error(`HTTP ${response.status}${snippet ? ` ${snippet}` : ''}`.trim());
+  }
+
+  let data = {};
+  if (text) {
+    try {
+      data = JSON.parse(text);
+    } catch (err) {
+      throw new Error('Invalid JSON response from HubSpot');
+    }
+  }
+
+  const count = Array.isArray(data.results) ? data.results.length : 0;
+  const status = count > 0 ? 'ok' : 'warn';
+  const detail = count > 0 ? 'Owner data retrieved' : 'No owners returned';
+
+  return {
+    overall: status,
+    checks: [
+      {
+        key: 'owners',
+        label: 'Owners',
+        status,
+        detail
+      }
+    ]
+  };
+}
+
+async function checkOpenAiIntegration(config) {
+  const apiKey = (config.openaiApiKey || '').trim();
+  if (!apiKey) {
+    throw new Error('Missing OpenAI API key');
+  }
+
+  const baseUrl = resolveBaseUrl(config.openaiBaseUrl, defaultSettings.openaiBaseUrl);
+  const requestUrl = new URL('/v1/models', baseUrl).toString();
+
+  const response = await fetch(requestUrl, {
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      Accept: 'application/json'
+    }
+  });
+
+  const text = await response.text();
+  if (!response.ok) {
+    const snippet = text ? text.slice(0, 120) : '';
+    throw new Error(`HTTP ${response.status}${snippet ? ` ${snippet}` : ''}`.trim());
+  }
+
+  let data = {};
+  if (text) {
+    try {
+      data = JSON.parse(text);
+    } catch (err) {
+      throw new Error('Invalid JSON response from OpenAI');
+    }
+  }
+
+  const models = Array.isArray(data.data) ? data.data.length : 0;
+  const status = models > 0 ? 'ok' : 'warn';
+  const detail = models > 0 ? `${models} model(s) available` : 'No models returned';
+
+  return {
+    overall: status,
+    checks: [
+      {
+        key: 'models',
+        label: 'Models',
+        status,
+        detail
+      }
+    ]
+  };
+}
+
+async function checkGoogleIntegration(config) {
+  const apiKey = (config.googleApiKey || '').trim();
+  if (!apiKey) {
+    throw new Error('Missing Google API key');
+  }
+
+  const baseUrl = resolveBaseUrl(config.googleBaseUrl, defaultSettings.googleBaseUrl);
+  const requestUrl = new URL('/discovery/v1/apis', baseUrl);
+  requestUrl.searchParams.set('key', apiKey);
+
+  const response = await fetch(requestUrl.toString(), {
+    headers: {
+      Accept: 'application/json'
+    }
+  });
+
+  const text = await response.text();
+  if (!response.ok) {
+    const snippet = text ? text.slice(0, 120) : '';
+    throw new Error(`HTTP ${response.status}${snippet ? ` ${snippet}` : ''}`.trim());
+  }
+
+  let data = {};
+  if (text) {
+    try {
+      data = JSON.parse(text);
+    } catch (err) {
+      throw new Error('Invalid JSON response from Google APIs');
+    }
+  }
+
+  const apis = Array.isArray(data.items) ? data.items.length : 0;
+  const status = apis > 0 ? 'ok' : 'warn';
+  const detail = apis > 0 ? `${apis} API(s) listed` : 'No APIs returned';
+
+  return {
+    overall: status,
+    checks: [
+      {
+        key: 'discovery',
+        label: 'Discovery',
+        status,
+        detail
+      }
+    ]
+  };
+}
+
+function resolveBaseUrl(value, fallback) {
+  const candidate = typeof value === 'string' ? value.trim() : '';
+  if (!candidate) return fallback;
+  try {
+    const normalized = new URL(candidate);
+    const output = normalized.toString();
+    return output.endsWith('/') ? output.slice(0, -1) : output;
+  } catch (err) {
+    return fallback;
+  }
 }
 
 async function fetchJsonish(baseUrl, path) {
@@ -1456,4 +1861,34 @@ function deriveWsUrl(baseUrl) {
     console.warn('Failed to derive websocket url', err);
     return null;
   }
+}
+
+function valueOrDefault(value, fallback = '') {
+  if (value === undefined || value === null) return fallback;
+  const trimmed = String(value).trim();
+  return trimmed || fallback;
+}
+
+function buildDefaultSettings() {
+  const runtimeDefaults = getRuntimeDefaults();
+  const merged = { ...BASE_DEFAULT_SETTINGS };
+  SETTINGS_KEYS.forEach((key) => {
+    if (Object.prototype.hasOwnProperty.call(runtimeDefaults, key) && runtimeDefaults[key] !== undefined) {
+      merged[key] = runtimeDefaults[key];
+    }
+  });
+  return merged;
+}
+
+function getRuntimeDefaults() {
+  if (typeof window === 'undefined') return {};
+  const payload = window.__APP_DEFAULTS__;
+  if (!payload || typeof payload !== 'object') return {};
+  const sanitized = {};
+  SETTINGS_KEYS.forEach((key) => {
+    if (Object.prototype.hasOwnProperty.call(payload, key) && payload[key] !== undefined) {
+      sanitized[key] = payload[key];
+    }
+  });
+  return sanitized;
 }

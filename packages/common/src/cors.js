@@ -42,7 +42,7 @@ function createDashboardCors(options = {}) {
       }
       callback(new Error(`Origin not allowed: ${origin}`));
     },
-    methods: ['GET', 'HEAD', 'OPTIONS'],
+    methods: ['GET', 'HEAD', 'POST', 'PATCH', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization', 'X-INTERNAL-KEY'],
     credentials: false,
     maxAge: 300
@@ -53,5 +53,6 @@ function createDashboardCors(options = {}) {
 
 module.exports = {
   createDashboardCors,
-  parseOrigins
+  parseOrigins,
+  normalizeOrigin
 };
