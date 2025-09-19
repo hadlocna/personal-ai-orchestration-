@@ -12,7 +12,7 @@ Modular monorepo for a continuously running agent framework that coordinates out
 1. Copy `.env.example` to `.env` and adjust credentials/secrets for your environment.
 2. Install dependencies with `npm install`. This wires up local workspace packages (e.g. `@repo/common`).
 3. Run individual services with `npm run --workspace @repo/orchestrator-svc start` (replace with the desired workspace). All HTTP endpoints currently require Basic Auth or the internal header.
-4. Hit `GET /config/validate` on any service to confirm environment variable validation using `infra/config.schema.json`.
+4. Hit `GET /config/validate` on any service—or run `npm run --workspace @repo/<service> config:doctor`—to confirm environment variables match `infra/config.schema.json`.
 5. Build Docker images from the repo root; each service Dockerfile expects the full monorepo context and executes `npm install --omit=dev` during build.
 6. Apply the baseline Postgres migration with `psql "$POSTGRES_URL" -f infra/migrations/0001_core_tables.sql` before running services that depend on persistence.
 
@@ -35,12 +35,12 @@ Refer to the documentation above for detailed requirement breakdowns, user stori
 - `PATCH /render/services/:id/env` bulk-updates environment variables with optional `clear` flag to wipe existing keys.
 - `POST /render/deploy/:id` triggers a deploy immediately; `GET /render/services` lists current services with optional `type` and `name` filters.
 - Background monitoring can be enabled via `RENDER_MONITOR_SERVICES` (comma-separated names or `id:<serviceId>`). When a monitored static site build fails with missing publish directory or build command, renderctl patches the service to use `rootDir`=`.` / `buildCommand`=`./render-build.sh` / `publishPath`=`dashboard-web/dist` and reruns the deploy. Tune via `RENDER_STATIC_SITE_*` env vars.
-- `POST /render/blueprint/apply` reads `infra/render.blueprint.yaml` (or a supplied `blueprintPath`) and updates each listed service's `serviceDetails` and env vars. Pass `{ "dryRun": true }` to preview changes without touching Render.
+- `POST /render/blueprint/apply` reads `infra/render.blueprint.yaml` (or a supplied `blueprintPath`) and updates each listed service's `serviceDetails` and env vars. The blueprint now enumerates every Phase 1 service—replace the `__REPLACE__` placeholders with live credentials before applying—and `{ "dryRun": true }` previews changes without touching Render.
 - `GET /task/events` on logging-svc surfaces the persisted event timeline for any task (filter by `taskId`, `corrId`, `traceId`, `actor`, or `kind`).
 - Operator CLI helpers: `node scripts/render-status.js` summarizes service deploy state, and `node scripts/renderctl-ops.js` exposes `list`, `deploy`, `env`, and `blueprint` commands against renderctl-svc.
 
 ## CLI Utilities
-- `npm run config:doctor` — print config validation status for the current environment.
+- `npm run config:doctor` — print config validation status for the current environment (pass a service name when needed). Each workspace also exposes `npm run --workspace @repo/<service> config:doctor` for convenience.
 - `npm run test:smoke` — enqueue an echo task, await completion, and verify logs end-to-end.
 - `npm run seed:examples` — post sample echo tasks (optionally wait for completion) and emit a demo log.
 - `npm run render:status` — leverage `renderctl-svc` to list services and report the latest deploy status (use `--fail-on-error` to exit non-zero when any deploy failed).
@@ -50,5 +50,6 @@ Refer to the documentation above for detailed requirement breakdowns, user stori
 - After every push to `main`, confirm each Render web service in the personal-ai-orchestration environment shows the latest deploy as `live`. Use `renderctl-svc` (`GET /render/services`) or the Render dashboard, and trigger a redeploy if any service reports `update_failed`.
 - Ensure every service is configured with the same `INTERNAL_KEY`, `BASIC_AUTH_USER`, and `BASIC_AUTH_PASS` so internal calls and Basic Auth succeed.
 - Set `LOGGING_URL` to the deployed logging-svc endpoint; orchestrator subscribes to `/logs/stream` to rebroadcast log frames over WebSocket.
-- Before deploying new environments, run `npm run config:doctor` or each service’s `/config/validate` endpoint to confirm env keys match `infra/config.schema.json`.
+- Before deploying new environments, run `npm run config:doctor` (or `npm run --workspace @repo/<service> config:doctor`) or hit each service’s `/config/validate` endpoint to confirm env keys match `infra/config.schema.json`.
+- The shared migration and service bootstraps now agree on the `trace_id`/`correlation_id` columns and supporting indexes; run `infra/migrations/0001_core_tables.sql` once per environment so services can start cleanly.
 - Validate deployed environments with `npm run test:smoke` (requires `ORCHESTRATOR_URL`, `LOGGING_URL`, `BASIC_AUTH_USER`, `BASIC_AUTH_PASS` in your shell) to ensure the echo task round-trip succeeds.
