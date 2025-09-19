@@ -9,7 +9,7 @@
 1. **Platform Foundations for Multi-Agent Expansion**
    - ✅ Extend `infra/config.schema.json`, `.env.example`, and service config reports with Twilio/OpenAI credentials, webhook secrets, and agent URLs. *(Codex agent — 2025-09-19)*
    - ✅ Author follow-on migrations for communication dossiers (calls, messages, emails, artifacts) and agent registry metadata. *(Codex agent — 2025-09-19)*
-   - ⬜ Refactor the orchestrator to load handlers from a registry, enable dispatch-only handlers, and capture agent assignment metadata.
+   - ✅ Refactor the orchestrator to load handlers from a registry, enable dispatch-only handlers, and capture agent assignment metadata. (Codex agent — 2025-09-19)
    - ⬜ Add signature verification helpers to `@repo/common` for webhook-driven services.
    - ⬜ Update local tooling and Render blueprints to include new agents out of the box.
 

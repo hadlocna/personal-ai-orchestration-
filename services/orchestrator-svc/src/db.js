@@ -140,8 +140,8 @@ async function createTask({ type, payload, source, correlationId, traceId, actor
     if (agentSlug) {
       assignmentEvent = await insertTaskEvent(client, {
         taskId: id,
-        actor,
-        kind: 'agent_assigned',
+        actor: 'orchestrator',
+        kind: 'assignment',
         data: {
           agentId,
           agentSlug,
@@ -329,6 +329,45 @@ async function insertTaskEvent(client, { taskId, actor, kind, data, correlationI
   return rows[0];
 }
 
+async function recordTaskEvent({ taskId, actor, kind, data, correlationId, traceId }) {
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const event = await insertTaskEvent(client, {
+      taskId,
+      actor,
+      kind,
+      data,
+      correlationId,
+      traceId
+    });
+    await client.query('COMMIT');
+    return event;
+  } catch (err) {
+    await client.query('ROLLBACK');
+    throw err;
+  } finally {
+    client.release();
+  }
+}
+
+async function recordAgentAssignmentEvent({ taskId, agent, correlationId, traceId }) {
+  if (!taskId || !agent) return null;
+  return recordTaskEvent({
+    taskId,
+    actor: 'orchestrator',
+    kind: 'agent_assigned',
+    data: {
+      agentId: agent.id || null,
+      agentSlug: agent.slug || null,
+      agentDisplayName: agent.displayName || null,
+      agentChannel: agent.channel || null
+    },
+    correlationId: correlationId || null,
+    traceId: traceId || null
+  });
+}
+
 async function listActiveAgents() {
   try {
     const { rows } = await pool.query(
@@ -353,5 +392,7 @@ module.exports = {
   applyTaskPatch,
   ConflictError,
   insertTaskEvent,
+  recordTaskEvent,
+  recordAgentAssignmentEvent,
   listActiveAgents
 };
