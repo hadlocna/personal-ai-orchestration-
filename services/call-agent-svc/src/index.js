@@ -148,7 +148,7 @@ function bootstrap() {
 
         try {
           const acceptPayload = buildOpenAiAcceptPayload(runtime, session);
-          const acceptUrl = `${runtime.openAi.baseUrl.replace(/\/$/, '')}/v1/realtime/calls/${callId}/accept`;
+          const acceptUrl = `https://api.openai.com/v1/realtime/calls/${callId}/accept`;
           const response = await globalFetch(acceptUrl, {
             method: 'POST',
             headers: {
@@ -440,34 +440,27 @@ function buildOpenAiAcceptPayload(runtime, session) {
 
   const payload = {
     type: 'realtime',
-    model,
+    model: 'gpt-realtime',
     instructions,
     modalities: ['audio', 'text'],
-    input_audio_format: { type: 'g711_ulaw', sample_rate: 8000 },
-    output_audio_format: { type: 'g711_ulaw', sample_rate: 8000 }
+    input_audio_format: 'g711_ulaw',
+    output_audio_format: 'g711_ulaw'
   };
 
   if (voice) {
     payload.voice = voice;
   }
 
-  if (session?.metadata) {
-    payload.metadata = session.metadata;
-  }
-
   return payload;
 }
 
 function buildOpenAiRealtimeCallUrl(baseUrl, callId) {
-  const url = new URL('/v1/realtime', baseUrl || 'https://api.openai.com');
+  // Use the official OpenAI WebSocket URL with call_id parameter
+  const url = new URL('/v1/realtime', 'https://api.openai.com');
   if (callId) {
     url.searchParams.set('call_id', callId);
   }
-  if (url.protocol === 'https:') {
-    url.protocol = 'wss:';
-  } else if (url.protocol === 'http:') {
-    url.protocol = 'ws:';
-  }
+  url.protocol = 'wss:';
   return url.toString();
 }
 
@@ -482,28 +475,22 @@ function monitorOpenAiCall(callId, session, openAiConfig, logger, sessionStore) 
   const socket = new WebSocket(url, {
     headers: {
       Authorization: `Bearer ${openAiConfig.key}`,
-      'OpenAI-Beta': 'realtime=v1',
       'User-Agent': `${SERVICE_NAME}/1.0`
     }
-
   });
 
   socket.on('open', () => {
     logger.info('Connected to OpenAI realtime session', { callId, sessionId, url });
-    const greeting = session?.greeting || openAiConfig.greeting;
-    const voice = session?.voice || openAiConfig.voice;
 
+    // Send initial greeting response for the call
+    const greeting = session?.greeting || openAiConfig.greeting;
     if (greeting) {
       const message = {
         type: 'response.create',
         response: {
-          modalities: ['audio'],
           instructions: greeting
         }
       };
-      if (voice) {
-        message.response.audio = { voice, format: 'g711_ulaw' };
-      }
       try {
         socket.send(JSON.stringify(message));
         logger.debug('Sent greeting to OpenAI realtime session', { callId, sessionId });
