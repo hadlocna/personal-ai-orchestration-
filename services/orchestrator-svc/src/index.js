@@ -540,6 +540,86 @@ async function createService() {
     }
   });
 
+  // Temporary migration endpoint - remove after OAuth table is created
+  app.post('/admin/apply-oauth-migration', async (req, res) => {
+    try {
+      logger.info('ADMIN_OAUTH_MIGRATION_REQUESTED', { data: { requester: deriveActor(req) } });
+
+      // Check if table already exists
+      const checkResult = await pool.query(`
+        SELECT table_name
+        FROM information_schema.tables
+        WHERE table_schema = 'public' AND table_name = 'oauth_tokens'
+      `);
+
+      if (checkResult.rows.length > 0) {
+        logger.info('ADMIN_OAUTH_MIGRATION_ALREADY_EXISTS');
+        return res.json({
+          success: true,
+          message: 'oauth_tokens table already exists',
+          action: 'none'
+        });
+      }
+
+      // Apply the OAuth migration
+      const migrationSQL = `
+        BEGIN;
+
+        CREATE EXTENSION IF NOT EXISTS "pgcrypto";
+
+        CREATE TABLE IF NOT EXISTS oauth_tokens (
+            id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+            provider TEXT NOT NULL,
+            scope_group TEXT NOT NULL, -- 'gmail', 'calendar', 'combined'
+            user_identifier TEXT NOT NULL DEFAULT 'default', -- for future multi-user support
+            encrypted_access_token TEXT NOT NULL,
+            encrypted_refresh_token TEXT,
+            expires_at TIMESTAMPTZ,
+            scopes TEXT[], -- actual granted scopes
+            metadata JSONB,
+            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            UNIQUE(provider, scope_group, user_identifier)
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_oauth_tokens_provider ON oauth_tokens (provider, scope_group);
+        CREATE INDEX IF NOT EXISTS idx_oauth_tokens_expires ON oauth_tokens (expires_at);
+
+        CREATE TRIGGER trg_oauth_tokens_updated_at
+        BEFORE UPDATE ON oauth_tokens
+        FOR EACH ROW
+        EXECUTE FUNCTION set_updated_at_timestamp();
+
+        COMMIT;
+      `;
+
+      await pool.query(migrationSQL);
+
+      logger.info('ADMIN_OAUTH_MIGRATION_APPLIED');
+
+      // Verify table creation
+      const verifyResult = await pool.query(`
+        SELECT column_name, data_type
+        FROM information_schema.columns
+        WHERE table_name = 'oauth_tokens'
+        ORDER BY ordinal_position
+      `);
+
+      res.json({
+        success: true,
+        message: 'OAuth migration applied successfully',
+        table_columns: verifyResult.rows.map(row => `${row.column_name} (${row.data_type})`)
+      });
+
+    } catch (err) {
+      logger.error('ADMIN_OAUTH_MIGRATION_ERROR', { data: { error: err.message, stack: err.stack } });
+      res.status(500).json({
+        error: 'Failed to apply OAuth migration',
+        details: err.message
+      });
+    }
+  });
+
   startLogForwarder({ logger, wsHub, loggingUrl: process.env.LOGGING_URL });
 
   return { app, server, wsHub, logger };
