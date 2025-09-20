@@ -114,6 +114,27 @@ export function createApiClient({ baseUrl, username, password }) {
         }
       };
       return socket;
+    },
+
+    // Generic HTTP methods for OAuth and other endpoints
+    async get(path) {
+      return request(path, { method: 'GET' });
+    },
+
+    async post(path, body) {
+      return request(path, { method: 'POST', body });
+    },
+
+    async put(path, body) {
+      return request(path, { method: 'PUT', body });
+    },
+
+    async patch(path, body) {
+      return request(path, { method: 'PATCH', body });
+    },
+
+    async delete(path) {
+      return request(path, { method: 'DELETE' });
     }
   };
 }
