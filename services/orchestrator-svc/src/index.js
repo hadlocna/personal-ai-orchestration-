@@ -119,7 +119,7 @@ async function createService() {
   });
 
   app.post('/task', async (req, res) => {
-    const { type, payload, source, correlationId } = req.body || {};
+    const { type, payload, source, correlationId, agentSlug } = req.body || {};
 
     if (!type || typeof type !== 'string') {
       return res.status(400).json({ error: 'type is required' });
@@ -129,7 +129,19 @@ async function createService() {
       return res.status(400).json({ error: 'source is required' });
     }
 
-    let handler = await resolveHandlerForTaskType(type);
+    let handler = null;
+    if (agentSlug && typeof agentSlug === 'string') {
+      if (!handlerRegistry) {
+        handlerRegistry = await HandlerRegistry.build();
+      }
+      const bySlug = handlerRegistry.getBySlug(agentSlug);
+      if (bySlug && Array.isArray(bySlug.taskTypes) && bySlug.taskTypes.includes(type)) {
+        handler = bySlug;
+      }
+    }
+    if (!handler) {
+      handler = await resolveHandlerForTaskType(type);
+    }
     if (!handler) {
       logger.warn('TASK_TYPE_UNSUPPORTED', { data: { type } });
       return res.status(422).json({ error: `Unsupported task type: ${type}` });

@@ -43,6 +43,16 @@ Modular monorepo for a continuously running agent framework that coordinates out
 - **Real-Time Voice Agent** — `call-agent-svc` with full Twilio + OpenAI SIP realtime integration
 - **Dashboard Enhancements** — Voice call tester UI with real-time call progression monitoring
 
+### Voice Calling Flow & Required Config
+- Dashboard “Voice Call Tester” → Orchestrator (`POST /task` type `call.start`) → Call Agent (`POST /call`) → Twilio outbound call → TwiML bridges to OpenAI SIP → OpenAI webhook accepts and runs realtime session.
+- Set these environment variables for `call-agent-svc` (see `infra/render.blueprint.yaml`):
+  - `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_CALLER_ID`
+  - `OPENAI_API_KEY`, `OPENAI_PROJECT_ID`, `OPENAI_WEBHOOK_SECRET`, `OPENAI_MODEL`, `OPENAI_REALTIME_VOICE`
+  - `WEBHOOK_PUBLIC_BASE_URL` (public URL of the call agent service), `LOGGING_URL`
+  - Optional: `TWILIO_WEBHOOK_SECRET` to validate Twilio status callbacks
+
+Note on service scope: for MVP we ship a focused `call-agent-svc` (voice). As we add SMS/WhatsApp/Email, we can either keep per-channel agents (preferred for isolation) or consolidate into a single `comms-agent-svc` with route namespaces (`/voice`, `/messages`, `/email`). The orchestrator already supports both via env-configured agent URLs.
+
 ### 🚧 In Progress / Next Priorities
 - **Messaging Agent Service** — Build `services/messaging-agent-svc` for SMS/WhatsApp outbound/inbound communications
 - **Email Agent Service** — Create `services/email-agent-svc` with SendGrid/SMTP integration

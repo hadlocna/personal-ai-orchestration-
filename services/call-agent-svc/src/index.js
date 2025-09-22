@@ -379,7 +379,7 @@ function bootstrap() {
 function buildRuntimeConfig() {
   return {
     port: Number.parseInt(process.env.PORT, 10) || 4020,
-    publicBaseUrl: sanitizeString(process.env.WEBHOOK_PUBLIC_BASE_URL, ''),
+    publicBaseUrl: sanitizeString(process.env.WEBHOOK_PUBLIC_BASE_URL || process.env.PUBLIC_DOMAIN, ''),
     loggingUrl: sanitizeString(process.env.LOGGING_URL, ''),
     sessionRetentionMs: parseInteger(process.env.CALL_AGENT_SESSION_RETENTION_MS, DEFAULT_SESSION_RETENTION_MS),
     openAi: {
@@ -395,7 +395,13 @@ function buildRuntimeConfig() {
     twilio: {
       accountSid: sanitizeString(process.env.TWILIO_ACCOUNT_SID, ''),
       authToken: sanitizeString(process.env.TWILIO_AUTH_TOKEN, ''),
-      callerId: sanitizeString(process.env.TWILIO_CALLER_ID, ''),
+      callerId: sanitizeString(
+        process.env.TWILIO_CALLER_ID
+          || process.env.TWILIO_NUMBER_PERSONAL
+          || process.env.TWILIO_NUMBER_WORK
+          || process.env.TWILIO_NUMBER_Work,
+        ''
+      ),
       baseUrl: sanitizeString(process.env.TWILIO_API_BASE_URL || process.env.TWILIO_BASE_URL, ''),
       webhookSecret: sanitizeString(process.env.TWILIO_WEBHOOK_SECRET || process.env.TWILIO_AUTH_TOKEN, ''),
       testMode: parseBoolean(process.env.TWILIO_TEST_MODE, true)
@@ -440,7 +446,7 @@ function buildOpenAiAcceptPayload(runtime, session) {
 
   const payload = {
     type: 'realtime',
-    model: 'gpt-realtime',
+    model,
     instructions,
     modalities: ['audio', 'text'],
     input_audio_format: 'g711_ulaw',
@@ -455,11 +461,13 @@ function buildOpenAiAcceptPayload(runtime, session) {
 }
 
 function buildOpenAiRealtimeCallUrl(baseUrl, callId) {
-  // Use the official OpenAI WebSocket URL with call_id parameter
-  const url = new URL('/v1/realtime', 'https://api.openai.com');
+  // Use configured API base URL (defaults to https://api.openai.com), upgrading to wss
+  const apiBase = sanitizeString(baseUrl, 'https://api.openai.com');
+  const url = new URL('/v1/realtime', apiBase);
   if (callId) {
     url.searchParams.set('call_id', callId);
   }
+  // Force secure websocket regardless of http/https on base
   url.protocol = 'wss:';
   return url.toString();
 }
@@ -861,4 +869,3 @@ if (require.main === module) {
 }
 
 module.exports = { bootstrap };
-

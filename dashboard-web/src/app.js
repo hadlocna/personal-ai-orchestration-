@@ -8,6 +8,7 @@ const SETTINGS_KEYS = [
   'websocketUrl',
   'loggingUrl',
   'echoUrl',
+  'callAgentUrl',
   'renderctlUrl',
   'username',
   'password',
@@ -27,6 +28,7 @@ const BASE_DEFAULT_SETTINGS = Object.freeze({
   websocketUrl: '',
   loggingUrl: 'https://logging-svc.onrender.com',
   echoUrl: 'https://echo-agent-svc.onrender.com',
+  callAgentUrl: 'https://call-agent-svc.onrender.com',
   renderctlUrl: 'https://renderctl-svc.onrender.com',
   username: '',
   password: '',
@@ -250,6 +252,7 @@ function onSettingsSubmit(event) {
     websocketUrl: formData.get('websocketUrl')?.trim() || '',
     loggingUrl: formData.get('loggingUrl')?.trim() || '',
     echoUrl: formData.get('echoUrl')?.trim() || '',
+    callAgentUrl: formData.get('callAgentUrl')?.trim() || '',
     renderctlUrl: formData.get('renderctlUrl')?.trim() || '',
     twilioBaseUrl: valueOrDefault(formData.get('twilioBaseUrl'), defaultSettings.twilioBaseUrl),
     hubspotBaseUrl: valueOrDefault(formData.get('hubspotBaseUrl'), defaultSettings.hubspotBaseUrl),
@@ -330,12 +333,39 @@ async function onNewTaskSubmit(event) {
   }
 }
 
+async function dispatchDirectCallAgent({ baseUrl, username, password, to, instructions }) {
+  const url = new URL('/call', baseUrl).toString();
+  const headers = { 'Content-Type': 'application/json' };
+  if (username || password) {
+    headers['Authorization'] = encodeBasicAuth(username || '', password || '');
+  }
+  const res = await fetch(url, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({ to, instructions })
+  });
+  const text = await res.text();
+  if (!res.ok) {
+    let detail = text || `HTTP ${res.status}`;
+    try {
+      const data = text ? JSON.parse(text) : null;
+      detail = data?.error || data?.message || detail;
+    } catch {}
+    throw new Error(`Call Agent error: ${detail}`);
+  }
+  try {
+    return text ? JSON.parse(text) : {};
+  } catch {
+    return {};
+  }
+}
+
 async function onVoiceCallSubmit(event) {
   event.preventDefault();
   if (!elements.voiceCallForm) return;
 
-  if (!orchestratorClient) {
-    setVoiceCallFeedback('Connect to the orchestrator to start a call.', 'error');
+  if (!orchestratorClient && !settings.callAgentUrl) {
+    setVoiceCallFeedback('Connect to the orchestrator or provide Call Agent URL to start a call.', 'error');
     return;
   }
 
@@ -370,15 +400,43 @@ async function onVoiceCallSubmit(event) {
   renderVoiceCall();
 
   try {
-    const response = await orchestratorClient.createTask({
-      type: 'call.start',
-      source: 'dashboard.voiceTester',
-      agentSlug: 'call-agent',
-      payload: {
-        to: sanitizedPhone,
-        message: message || 'Hello from the Personal AI Orchestration dashboard.'
+    let response;
+    let usedPath = 'orchestrator';
+    if (orchestratorClient) {
+      try {
+        response = await orchestratorClient.createTask({
+          type: 'call.start',
+          source: 'dashboard.voiceTester',
+          agentSlug: 'call-agent',
+          payload: {
+            to: sanitizedPhone,
+            message: message || 'Hello from the Personal AI Orchestration dashboard.'
+          }
+        });
+      } catch (err) {
+        if (settings.callAgentUrl) {
+          usedPath = 'call-agent';
+          response = await dispatchDirectCallAgent({
+            baseUrl: settings.callAgentUrl,
+            username: settings.username,
+            password: settings.password,
+            to: sanitizedPhone,
+            instructions: message || undefined
+          });
+        } else {
+          throw err;
+        }
       }
-    });
+    } else {
+      usedPath = 'call-agent';
+      response = await dispatchDirectCallAgent({
+        baseUrl: settings.callAgentUrl,
+        username: settings.username,
+        password: settings.password,
+        to: sanitizedPhone,
+        instructions: message || undefined
+      });
+    }
 
     state.voiceCall = {
       ...state.voiceCall,
@@ -391,12 +449,14 @@ async function onVoiceCallSubmit(event) {
       lastUpdated: new Date().toISOString()
     };
 
-    setVoiceCallFeedback(
-      response?.id
+    const feedback = usedPath === 'orchestrator'
+      ? (response?.id
         ? `Call task ${shortId(response.id)} queued for ${sanitizedPhone}. Monitoring status…`
-        : 'Call dispatched. Monitoring status…',
-      'success'
-    );
+        : 'Call dispatched. Monitoring status…')
+      : (response?.callSid
+        ? `Call queued via Call Agent (SID ${response.callSid}).`
+        : 'Call dispatched via Call Agent.');
+    setVoiceCallFeedback(feedback, 'success');
     elements.voiceCallForm.reset();
     renderVoiceCall();
 
@@ -405,7 +465,7 @@ async function onVoiceCallSubmit(event) {
         'VOICE_CALL',
         new Date().toISOString(),
         `Voice call queued for ${sanitizedPhone}`,
-        response || { to: sanitizedPhone }
+        response || { to: sanitizedPhone, path: usedPath }
       )
     );
   } catch (err) {
@@ -430,7 +490,7 @@ function renderVoiceCall() {
   const submit = elements.voiceCallSubmit;
   if (!form || !statusEl) return;
 
-  const disabled = !orchestratorClient;
+  const disabled = !orchestratorClient && !settings.callAgentUrl;
   const pending = state.voiceCall.status === 'pending';
 
   Array.from(form.elements).forEach((field) => {
@@ -595,6 +655,7 @@ function applySettingsToForm(config) {
   form.elements.websocketUrl.value = config.websocketUrl || '';
   form.elements.loggingUrl.value = config.loggingUrl || '';
   form.elements.echoUrl.value = config.echoUrl || '';
+  if (form.elements.callAgentUrl) form.elements.callAgentUrl.value = config.callAgentUrl || '';
   form.elements.renderctlUrl.value = config.renderctlUrl || '';
   if (form.elements.twilioAccountSid) form.elements.twilioAccountSid.value = config.twilioAccountSid || '';
   if (form.elements.twilioAuthToken) form.elements.twilioAuthToken.value = config.twilioAuthToken || '';
@@ -910,6 +971,7 @@ async function runConnectivityCheck() {
     { key: 'orchestrator', name: 'Orchestrator', base: settings.orchestratorUrl },
     { key: 'logging', name: 'Logging', base: settings.loggingUrl },
     { key: 'echo', name: 'Echo Agent', base: settings.echoUrl },
+    { key: 'call-agent', name: 'Call Agent', base: settings.callAgentUrl },
     { key: 'renderctl', name: 'Render Control', base: settings.renderctlUrl }
   ];
 
