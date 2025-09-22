@@ -477,9 +477,21 @@ function buildOpenAiAcceptPayload(runtime, session) {
 }
 
 function buildOpenAiRealtimeCallUrl(baseUrl, callId) {
-  // Use configured API base URL (defaults to https://api.openai.com), upgrading to wss
+  // Use configured API base URL (defaults to https://api.openai.com), upgrading to wss.
+  // If the base already points to the realtime endpoint, don't append the path again.
   const apiBase = sanitizeString(baseUrl, 'https://api.openai.com');
-  const url = new URL('/v1/realtime', apiBase);
+  let url;
+  try {
+    const parsed = new URL(apiBase);
+    const normalizedPath = parsed.pathname.replace(/\/$/, '');
+    if (normalizedPath.endsWith('/v1/realtime')) {
+      url = parsed;
+    } else {
+      url = new URL('/v1/realtime', parsed);
+    }
+  } catch (_err) {
+    url = new URL('/v1/realtime', 'https://api.openai.com');
+  }
   if (callId) {
     url.searchParams.set('call_id', callId);
   }
