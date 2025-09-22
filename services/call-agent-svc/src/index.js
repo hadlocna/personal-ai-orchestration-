@@ -285,6 +285,14 @@ function bootstrap() {
     const greeting = sanitizePrompt(requestPayload.greeting, runtime.openAi.greeting);
     const metadata = requestPayload.metadata && typeof requestPayload.metadata === 'object' ? requestPayload.metadata : null;
 
+    logger.info('CALL_REQUEST_RECEIVED', {
+      to: to ? `${to.slice(0, 4)}…` : '',
+      from: from ? `${from.slice(0, 4)}…` : '',
+      model,
+      voice,
+      testMode: runtime.twilio.testMode
+    });
+
     if (!to) {
       return res.status(400).json({ error: 'MISSING_DESTINATION', message: 'Request body must include `to` E.164 phone number.' });
     }
@@ -320,6 +328,7 @@ function bootstrap() {
       const fakeSid = `CA${crypto.randomBytes(16).toString('hex')}`;
       sessionStore.attachCallSid(session.sessionId, fakeSid);
       sessionStore.updateStatus(session.sessionId, 'simulated', { note: 'Twilio test mode enabled' });
+      logger.info('CALL_SIMULATED', { sessionId: session.sessionId, fakeSid });
       return res.status(202).json({
         status: 'simulated',
         callSid: fakeSid,
@@ -378,6 +387,17 @@ function bootstrap() {
         error: 'TWILIO_CALL_FAILED',
         message: err?.message || 'Twilio call initiation failed.'
       });
+    }
+  });
+
+  // Debug endpoint to inspect in-memory call sessions
+  app.get('/debug/sessions', (req, res) => {
+    try {
+      const sessions = sessionStore.summaries();
+      res.json({ count: sessions.length, sessions });
+    } catch (err) {
+      logger.error('DEBUG_SESSIONS_ERROR', { error: serializeError(err) });
+      res.status(500).json({ error: 'DEBUG_SESSIONS_FAILED' });
     }
   });
 
@@ -801,6 +821,23 @@ function createSessionStore(logger) {
         }
       }
       return removed;
+    },
+    summaries() {
+      const list = [];
+      for (const [sessionId, s] of byId.entries()) {
+        list.push({
+          sessionId,
+          to: s.to,
+          from: s.from,
+          status: s.status,
+          callSid: s.callSid || null,
+          openAiCallId: s.openAiCallId || null,
+          monitoring: s.monitoring,
+          updatedAt: new Date(s.updatedAt).toISOString(),
+          lastDetail: s.lastDetail || null
+        });
+      }
+      return list;
     }
   };
 }

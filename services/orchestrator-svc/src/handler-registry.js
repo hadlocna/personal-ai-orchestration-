@@ -159,6 +159,20 @@ function createCallDispatchHandler() {
         data: { status: response.status, resultPreview: JSON.stringify(json).slice(0, 200) }
       });
 
+      // If the agent queued/simulated a call, surface as DEFERRED so UI shows pending state
+      const respStatus = (json && json.status) ? String(json.status).toLowerCase() : '';
+      if (respStatus === 'queued' || respStatus === 'simulated') {
+        return {
+          status: 'deferred',
+          ack: {
+            callSid: json.callSid || json.sid || null,
+            to: json.to || to,
+            from: json.from || from
+          },
+          metadata: json
+        };
+      }
+
       return json;
     },
     metadata: { description: 'Outbound call dispatch' },
