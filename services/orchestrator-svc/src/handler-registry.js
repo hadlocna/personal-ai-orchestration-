@@ -110,7 +110,57 @@ function createCallDispatchHandler() {
     channel: 'voice',
     mode: 'dispatch',
     taskTypes: ['call.start'],
-    dispatch: buildDispatchExecutor({ slug: 'call-agent' }, { endpoint, dispatch: { method: 'POST', includeTask: false } }),
+    dispatch: async ({ task, logger }) => {
+      const payload = (task && task.payload) || {};
+      const to = (payload.to || '').toString().trim();
+      const from = (payload.from || '').toString().trim() || undefined;
+      const message = (payload.message || payload.instructions || '').toString().trim();
+      const instructions = message || undefined;
+      const voice = payload.voice || undefined;
+      const model = payload.model || undefined;
+
+      if (!to) {
+        logger.warn('CALL_AGENT_DISPATCH_MISSING_TO', {
+          data: { taskId: task.id, payloadPreview: JSON.stringify(payload).slice(0, 200) }
+        });
+        throw new Error('Dispatch invalid: missing destination number');
+      }
+
+      const body = { to };
+      if (from) body.from = from;
+      if (instructions) body.instructions = instructions;
+      if (voice) body.voice = voice;
+      if (model) body.model = model;
+
+      const headers = { 'Content-Type': 'application/json' };
+
+      logger.info('CALL_AGENT_DISPATCH_REQUEST', {
+        data: { endpoint, body }
+      });
+
+      const response = await internalFetch(endpoint, {
+        method: 'POST',
+        headers,
+        body
+      });
+
+      const text = await response.text().catch(() => '');
+      if (!response.ok) {
+        logger.error('CALL_AGENT_DISPATCH_FAILED', {
+          data: { status: response.status, body: text.slice(0, 500) }
+        });
+        throw new Error(`Dispatch failed (agent call-agent): ${response.status} ${text}`.trim());
+      }
+
+      let json = null;
+      try { json = text ? JSON.parse(text) : {}; } catch (_) { json = {}; }
+
+      logger.info('CALL_AGENT_DISPATCH_OK', {
+        data: { status: response.status, resultPreview: JSON.stringify(json).slice(0, 200) }
+      });
+
+      return json;
+    },
     metadata: { description: 'Outbound call dispatch' },
     source: 'env'
   };

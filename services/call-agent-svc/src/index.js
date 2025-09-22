@@ -276,7 +276,10 @@ function bootstrap() {
     const requestPayload = req.body || {};
     const to = typeof requestPayload.to === 'string' ? requestPayload.to.trim() : '';
     const from = typeof requestPayload.from === 'string' ? requestPayload.from.trim() : runtime.twilio.callerId;
-    const instructions = sanitizePrompt(requestPayload.instructions, runtime.openAi.instructions);
+    const instructions = sanitizePrompt(
+      requestPayload.instructions || requestPayload.message,
+      runtime.openAi.instructions
+    );
     const voice = sanitizeString(requestPayload.voice, runtime.openAi.voice);
     const model = sanitizeString(requestPayload.model, runtime.openAi.model);
     const greeting = sanitizePrompt(requestPayload.greeting, runtime.openAi.greeting);
