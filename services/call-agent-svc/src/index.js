@@ -8,12 +8,11 @@ const WebSocket = require('ws');
 
 const {
   ensureConfig,
+  validateEnv,
   buildConfigReport,
   requireAuth,
   createDashboardCors,
-
   createServiceLogger
-
 } = require('@repo/common');
 
 const SERVICE_NAME = 'call-agent-svc';
@@ -28,10 +27,23 @@ const SIGNATURE_TOLERANCE_SECONDS = 5 * 60;
 const globalFetch = typeof fetch === 'function' ? fetch.bind(globalThis) : null;
 
 function bootstrap() {
+  // Validate env but do not hard-exit on optional key format errors; only error on truly required keys
   try {
-    ensureConfig();
+    const result = validateEnv();
+    if (!result.valid) {
+      const fatal = (result.errors || []).some((e) => {
+        // Treat missing required keys as fatal
+        return e.keyword === 'required';
+      });
+      if (fatal) {
+        console.error(`${SERVICE_NAME}: configuration validation failed`, result.errors);
+        process.exit(1);
+      } else {
+        console.warn(`${SERVICE_NAME}: non-fatal config warnings`, result.errors);
+      }
+    }
   } catch (err) {
-    console.error(`${SERVICE_NAME}: configuration validation failed`, err.cause || err);
+    console.error(`${SERVICE_NAME}: configuration validation error`, err.cause || err);
     process.exit(1);
   }
 
@@ -244,16 +256,20 @@ function bootstrap() {
   });
   app.use('/webhooks/twilio', twilioWebhookRouter);
 
-  app.use(requireAuth());
-
-
+  // Public health/config endpoints for platform probes
   app.get('/health', (req, res) => {
+    res.json({ service: SERVICE_NAME, status: 'ok', timestamp: new Date().toISOString() });
+  });
+  app.get('/healthz', (req, res) => {
     res.json({ service: SERVICE_NAME, status: 'ok', timestamp: new Date().toISOString() });
   });
 
   app.get('/config/validate', (req, res) => {
     res.json(buildConfigReport(SERVICE_NAME));
   });
+
+  // Protect remaining endpoints with Basic Auth / internal key
+  app.use(requireAuth());
 
 
   app.post('/call', async (req, res) => {
