@@ -244,9 +244,10 @@ function bootstrap() {
   twilioWebhookRouter.use(createTwilioSignatureValidator(runtime, logger));
   twilioWebhookRouter.post('/status', (req, res) => {
     const payload = { ...req.body };
-    logger.debug('Received Twilio status callback', payload);
+    const callSid = payload.CallSid || payload.CallSidSid || null;
+    const status = payload.CallStatus || payload.CallStatusCallbackEvent || 'unknown';
+    logger.info('TWILIO_STATUS', { callSid, status, payload });
     if (payload.CallSid) {
-      const status = payload.CallStatus || payload.CallStatusCallbackEvent || 'unknown';
       sessionStore.updateStatusByCallSid(payload.CallSid, `twilio_${status}`, { payload });
       if (['completed', 'failed', 'busy', 'no-answer', 'canceled'].includes(status)) {
         sessionStore.closeByCallSid(payload.CallSid, { reason: status, payload });
@@ -611,6 +612,7 @@ function monitorOpenAiCall(callId, session, openAiConfig, logger, sessionStore) 
 function createTwilioSignatureValidator(runtime, logger) {
   const secret = runtime.twilio.webhookSecret;
   const baseUrl = runtime.publicBaseUrl;
+  const verifyEnabled = String(process.env.TWILIO_WEBHOOK_VERIFY || 'true').trim().toLowerCase() !== 'false';
   if (!secret) {
     logger.warn('Twilio webhook signature verification disabled (no TWILIO_WEBHOOK_SECRET or TWILIO_AUTH_TOKEN)');
     return (_req, _res, next) => next();
@@ -620,6 +622,10 @@ function createTwilioSignatureValidator(runtime, logger) {
     return (_req, _res, next) => next();
   }
   return (req, res, next) => {
+    if (!verifyEnabled) {
+      logger.warn('Twilio webhook signature verification disabled by env (TWILIO_WEBHOOK_VERIFY=false)');
+      return next();
+    }
     const signature = req.get('x-twilio-signature');
     if (!signature) {
       logger.warn('Twilio webhook missing X-Twilio-Signature header');
