@@ -312,7 +312,18 @@ async function main() {
   let bootstrapCfg = null;
   try { bootstrapCfg = JSON.parse(envConfigRaw); } catch (e) { throw new Error('APP_CONFIG invalid JSON'); }
   if (!bootstrapCfg.db_url) throw new Error('APP_CONFIG.db_url is required to connect to Postgres');
-  pool = new Pool({ connectionString: bootstrapCfg.db_url, max: 10 });
+  // Allow indirection via env:VAR_NAME to support Render's injected DATABASE_URL when a DB is linked
+  let resolvedDbUrl = String(bootstrapCfg.db_url);
+  const ENV_PREFIX = 'env:';
+  if (resolvedDbUrl.startsWith(ENV_PREFIX)) {
+    const varName = resolvedDbUrl.slice(ENV_PREFIX.length).trim();
+    const envValue = process.env[varName];
+    if (!envValue) {
+      throw new Error(`APP_CONFIG.db_url references ${varName} but it is not set in environment`);
+    }
+    resolvedDbUrl = envValue;
+  }
+  pool = new Pool({ connectionString: resolvedDbUrl, max: 10 });
 
   // 2) Load config from DB or persist from env
   cfg = await loadConfigFromDbOrEnv();
