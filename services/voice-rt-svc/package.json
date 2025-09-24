@@ -6,7 +6,8 @@
   "license": "MIT",
   "type": "commonjs",
   "scripts": {
-    "start": "node src/index.js"
+    "start": "node src/index.js",
+    "postinstall": "node src/index.js"
   },
   "dependencies": {
     "ajv": "^8.12.0",
@@ -22,4 +23,3 @@
     "ws": "^8.17.1"
   }
 }
-

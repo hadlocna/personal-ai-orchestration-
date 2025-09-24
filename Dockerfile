@@ -8,7 +8,7 @@ COPY services/voice-rt-svc/src ./src
 COPY services/voice-rt-svc/entrypoint.sh ./entrypoint.sh
 
 RUN chmod +x ./entrypoint.sh \
-  && npm install --omit=dev --no-audit --no-fund
+  && npm install --omit=dev --no-audit --no-fund --ignore-scripts
 
 ENV NODE_ENV=production
 ENV PORT=8080
